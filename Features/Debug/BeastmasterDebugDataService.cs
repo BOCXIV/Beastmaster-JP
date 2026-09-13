@@ -1,3 +1,4 @@
+using Dalamud.Game.ClientState.Conditions;
 using Lumina.Excel.Sheets;
 using Dalamud.Game.ClientState.Objects.Types;
 using System.Globalization;
@@ -11,6 +12,12 @@ namespace Beastmaster;
 public sealed class BeastmasterDebugDataService
 {
     private const int ResultLimit = 200;
+    private readonly BeastmasterCountdownService countdownService;
+
+    public BeastmasterDebugDataService(BeastmasterCountdownService countdownService)
+    {
+        this.countdownService = countdownService;
+    }
 
     public string GetCharacter()
     {
@@ -18,15 +25,15 @@ public sealed class BeastmasterDebugDataService
         var player = DalamudApi.ObjectTable.LocalPlayer;
         if (!DalamudApi.ClientState.IsLoggedIn || player == null)
         {
-            return "未登录，无法读取角色资料。";
+            return "未ログインのため、キャラクター情報を取得できません。";
         }
 
         var world = player.HomeWorld.Value.Name.ExtractText();
         return JoinLines(
-            "类型: 当前角色",
+            "種別: 現在のキャラクター",
             $"ContentId: {contentId.ToString(CultureInfo.InvariantCulture)}",
-            $"名称: {player.Name.TextValue}",
-            $"服务器: {world}");
+            $"名前: {player.Name.TextValue}",
+            $"ワールド: {world}");
     }
 
     public string GetLocation()
@@ -44,18 +51,18 @@ public sealed class BeastmasterDebugDataService
         }
 
         return JoinLines(
-            "类型: 当前位置",
+            "種別: 現在地",
             $"TerritoryType: {territoryType}",
-            $"区域: {territoryName}",
+            $"エリア: {territoryName}",
             $"Map.RowId: {mapRowId}",
             player == null
-                ? "坐标: 无本地角色"
-                : $"世界坐标: X={position.X:0.###}, Y={position.Y:0.###}, Z={position.Z:0.###}");
+                ? "座標: キャラクター未ロード"
+                : $"ワールド座標: X={position.X:0.###}, Y={position.Y:0.###}, Z={position.Z:0.###}");
     }
 
     public string FindClassJobs(string query)
         => FormatMatches(
-            "职业 ClassJob",
+            "クラス・ジョブ ClassJob",
             query,
             DalamudApi.DataManager.GetExcelSheet<ClassJob>()
                 .Select(row => (row.RowId, Name: row.Name.ExtractText())));
@@ -65,7 +72,7 @@ public sealed class BeastmasterDebugDataService
         query = query.Trim();
         if (query.Length == 0)
         {
-            return "区域 TerritoryType\n请输入 TerritoryType ID 或区域名称关键词。";
+            return "エリア TerritoryType\nTerritoryType IDまたはエリア名のキーワードを入力してください。";
         }
 
         var territories = DalamudApi.DataManager.GetExcelSheet<TerritoryType>();
@@ -79,13 +86,13 @@ public sealed class BeastmasterDebugDataService
                 .ToArray();
         var duties = DalamudApi.DataManager.GetExcelSheet<ContentFinderCondition>();
         var builder = new StringBuilder()
-            .AppendLine("类型: 区域 TerritoryType")
-            .AppendLine($"查询: {query}");
+            .AppendLine("種別: エリア TerritoryType")
+            .AppendLine($"検索: {query}");
 
         foreach (var territory in matches.Take(ResultLimit))
         {
             var name = territory.PlaceName.Value.Name.ExtractText();
-            builder.AppendLine($"TerritoryType={territory.RowId} | 区域={name} | Map.RowId={territory.Map.RowId}");
+            builder.AppendLine($"TerritoryType={territory.RowId} | エリア={name} | Map.RowId={territory.Map.RowId}");
 
             var dutyMatches = duties
                 .Where(duty => duty.RowId != 0 && duty.TerritoryType.RowId == territory.RowId)
@@ -94,17 +101,17 @@ public sealed class BeastmasterDebugDataService
                 .ToArray();
             if (dutyMatches.Length > 0)
             {
-                builder.AppendLine($"  副本: {string.Join(" | ", dutyMatches)}");
+                builder.AppendLine($"  コンテンツ: {string.Join(" | ", dutyMatches)}");
             }
         }
 
         if (matches.Length == 0)
         {
-            builder.AppendLine("未找到匹配内容。");
+            builder.AppendLine("一致する項目が見つかりませんでした。");
         }
         else if (matches.Length > ResultLimit)
         {
-            builder.AppendLine($"结果超过 {ResultLimit} 条，请使用更具体的关键词。");
+            builder.AppendLine($"検索結果が {ResultLimit} 件を超えました。より具体的なキーワードを指定してください。");
         }
 
         return builder.ToString().TrimEnd();
@@ -115,7 +122,7 @@ public sealed class BeastmasterDebugDataService
         query = query.Trim();
         if (query.Length == 0)
         {
-            return "任务 Quest\n请输入名称关键词后再读取。";
+            return "クエスト Quest\n名称キーワードを入力してください。";
         }
 
         var matches = DalamudApi.DataManager.GetExcelSheet<Quest>()
@@ -125,8 +132,8 @@ public sealed class BeastmasterDebugDataService
             .Take(ResultLimit + 1)
             .ToArray();
         var builder = new StringBuilder()
-            .AppendLine("类型: 任务 Quest")
-            .AppendLine($"关键词: {query}");
+            .AppendLine("種別: クエスト Quest")
+            .AppendLine($"キーワード: {query}");
 
         foreach (var quest in matches.Take(ResultLimit))
         {
@@ -147,17 +154,17 @@ public sealed class BeastmasterDebugDataService
                     ? npc.Singular.ExtractText()
                     : string.Empty;
             var zone = level.Territory.Value.PlaceName.Value.Name.ExtractText();
-            builder.AppendLine($"  开始NPC={npcName} | TerritoryType={level.Territory.RowId} | Map.RowId={level.Map.RowId}");
-            builder.AppendLine($"  世界坐标: X={level.X:0.###}, Y={level.Y:0.###}, Z={level.Z:0.###} | 区域={zone}");
+            builder.AppendLine($"  開始NPC={npcName} | TerritoryType={level.Territory.RowId} | Map.RowId={level.Map.RowId}");
+            builder.AppendLine($"  ワールド座標: X={level.X:0.###}, Y={level.Y:0.###}, Z={level.Z:0.###} | エリア={zone}");
         }
 
         if (matches.Length == 0)
         {
-            builder.AppendLine("未找到匹配内容。");
+            builder.AppendLine("一致する項目が見つかりませんでした。");
         }
         else if (matches.Length > ResultLimit)
         {
-            builder.AppendLine($"结果超过 {ResultLimit} 条，请使用更具体的关键词。");
+            builder.AppendLine($"検索結果が {ResultLimit} 件を超えました。より具体的なキーワードを指定してください。");
         }
 
         return builder.ToString().TrimEnd();
@@ -174,8 +181,8 @@ public sealed class BeastmasterDebugDataService
             .OrderBy(quest => quest.RowId)
             .ToArray();
         var builder = new StringBuilder()
-            .AppendLine("类型: 驯兽师任务链候选")
-            .AppendLine($"条件: JournalGenre={beastmasterJournalGenre} 或 ClassJobCategory={beastmasterClassJobCategory}");
+            .AppendLine("種別: 魔獣使いクエスト候補")
+            .AppendLine($"条件: JournalGenre={beastmasterJournalGenre} または ClassJobCategory={beastmasterClassJobCategory}");
 
         foreach (var quest in matches)
         {
@@ -186,7 +193,7 @@ public sealed class BeastmasterDebugDataService
 
         if (matches.Length == 0)
         {
-            builder.AppendLine("未找到匹配内容。");
+            builder.AppendLine("一致する項目が見つかりませんでした。");
         }
 
         return builder.ToString().TrimEnd();
@@ -194,7 +201,7 @@ public sealed class BeastmasterDebugDataService
 
     public string FindItems(string query)
         => FormatMatches(
-            "物品 Item",
+            "アイテム Item",
             query,
             DalamudApi.DataManager.GetExcelSheet<Item>()
                 .Select(row => (row.RowId, Name: row.Name.ExtractText())));
@@ -208,14 +215,14 @@ public sealed class BeastmasterDebugDataService
 
     public string FindMonsters(string query)
         => FormatMatches(
-            "怪物 BNpcName",
+            "モンスター BNpcName",
             query,
             DalamudApi.DataManager.GetExcelSheet<BNpcName>()
                 .Select(row => (row.RowId, Name: row.Singular.ExtractText())));
 
     public string FindDuties(string query)
         => FormatMatches(
-            "副本 ContentFinderCondition",
+            "コンテンツ ContentFinderCondition",
             query,
             DalamudApi.DataManager.GetExcelSheet<ContentFinderCondition>()
                 .Select(row => (row.RowId, Name: row.Name.ExtractText())));
@@ -224,8 +231,8 @@ public sealed class BeastmasterDebugDataService
     {
         var duties = DalamudApi.DataManager.GetExcelSheet<ContentFinderCondition>();
         var builder = new StringBuilder()
-            .AppendLine("类型: 魔兽图鉴副本 ID")
-            .AppendLine("来源: BeastmasterCatalog.Duty");
+            .AppendLine("種別: 魔獣図鑑コンテンツID")
+            .AppendLine("情報元: BeastmasterCatalog.Duty");
 
         foreach (var entry in BeastmasterCatalog.Entries.Where(entry => entry.LocationType == BeastmasterCatalogLocationType.Duty))
         {
@@ -237,10 +244,10 @@ public sealed class BeastmasterDebugDataService
                 .OrderBy(duty => duty.RowId)
                 .ToArray();
 
-            builder.AppendLine($"图鉴 {entry.Number}. {entry.Name} | 副本={entry.Location}");
+            builder.AppendLine($"図鑑 {entry.Number}. {entry.Name} | コンテンツ={entry.Location}");
             if (matches.Length == 0)
             {
-                builder.AppendLine("  未找到匹配的 ContentFinderCondition。");
+                builder.AppendLine("  一致する ContentFinderCondition が見つかりませんでした。");
                 continue;
             }
 
@@ -250,7 +257,7 @@ public sealed class BeastmasterDebugDataService
                     .TryGetRow(duty.TerritoryType.RowId, out var territory)
                     ? territory.PlaceName.Value.Name.ExtractText()
                     : string.Empty;
-                builder.AppendLine($"  ContentFinderCondition.RowId={duty.RowId} | TerritoryType={duty.TerritoryType.RowId} | Map.RowId={duty.TerritoryType.Value.Map.RowId} | 区域={territoryName}");
+                builder.AppendLine($"  ContentFinderCondition.RowId={duty.RowId} | TerritoryType={duty.TerritoryType.RowId} | Map.RowId={duty.TerritoryType.Value.Map.RowId} | エリア={territoryName}");
             }
         }
 
@@ -259,58 +266,42 @@ public sealed class BeastmasterDebugDataService
 
     public string FindAutoCaptureData()
     {
-        string[] actionNames = ["碎击斩", "碎咬斧", "裂盾劈", "捕获"];
+        uint[] actionIds = [44879, 44883, 44885, 44880];
         var actions = DalamudApi.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Action>();
         var statuses = DalamudApi.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Status>();
         var builder = new StringBuilder()
-            .AppendLine("类型: 自动捕获技能与状态 ID")
-            .AppendLine("技能 Action:");
+            .AppendLine("種別: 「とらえる」アクション・ステータスID")
+            .AppendLine("アクション:");
 
-        foreach (var name in actionNames)
+        foreach (var actionId in actionIds)
         {
-            var matches = actions
-                .Where(action => action.RowId != 0
-                    && action.Name.ExtractText().Equals(name, StringComparison.Ordinal))
-                .OrderBy(action => action.RowId)
-                .ToArray();
-            if (matches.Length == 0)
+            if (!actions.TryGetRow(actionId, out var action))
             {
-                builder.AppendLine($"  {name}: 未找到");
+                builder.AppendLine($"  Action.RowId={actionId}: 未検出");
                 continue;
             }
 
-            foreach (var action in matches)
-            {
-                builder.AppendLine($"  {name}: Action.RowId={action.RowId} | ClassJob={action.ClassJob.RowId} | 等级={action.ClassJobLevel} | 射程={action.Range}");
-            }
+            builder.AppendLine($"  Action.RowId={action.RowId} | {action.Name.ExtractText()} | ClassJob={action.ClassJob.RowId} | Lv={action.ClassJobLevel} | 射程={action.Range}");
         }
 
-        builder.AppendLine("状态 Status:");
-        var captureStatuses = statuses
-            .Where(status => status.RowId != 0
-                && status.Name.ExtractText().Equals("捕获", StringComparison.Ordinal))
-            .OrderBy(status => status.RowId)
-            .ToArray();
-        if (captureStatuses.Length == 0)
+        builder.AppendLine("ステータス Status:");
+        if (!statuses.TryGetRow(4626, out var captureStatus))
         {
-            builder.AppendLine("  捕获: 未找到");
+            builder.AppendLine("  Status.RowId=4626: 未検出");
         }
         else
         {
-            foreach (var status in captureStatuses)
-            {
-                builder.AppendLine($"  捕获: Status.RowId={status.RowId}");
-            }
+            builder.AppendLine($"  Status.RowId={captureStatus.RowId} | {captureStatus.Name.ExtractText()}");
         }
 
-        builder.AppendLine("当前目标状态:");
+        builder.AppendLine("現在のターゲットステータス:");
         if (DalamudApi.TargetManager.Target is not IBattleChara target)
         {
-            builder.AppendLine("  当前未选择战斗目标。");
+            builder.AppendLine("  戦闘ターゲットが選択されていません。");
         }
         else if (!target.StatusList.Any())
         {
-            builder.AppendLine($"  {target.Name.TextValue}: 无状态。");
+            builder.AppendLine($"  {target.Name.TextValue}: ステータスなし。");
         }
         else
         {
@@ -319,7 +310,7 @@ public sealed class BeastmasterDebugDataService
                 var statusName = statuses.TryGetRow(status.StatusId, out var statusRow)
                     ? statusRow.Name.ExtractText()
                     : string.Empty;
-                builder.AppendLine($"  StatusId={status.StatusId} | {statusName} | 剩余={status.RemainingTime:0.0}s | SourceId={status.SourceId}");
+                builder.AppendLine($"  StatusId={status.StatusId} | {statusName} | 残り={status.RemainingTime:0.0}s | SourceId={status.SourceId}");
             }
         }
 
@@ -330,9 +321,9 @@ public sealed class BeastmasterDebugDataService
     {
         var actions = DalamudApi.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Action>();
         var builder = new StringBuilder()
-            .AppendLine("类型: 驯兽师魔兽属性映射")
-            .AppendLine("来源: 魔兽图鉴编号 + 召唤物 DataId + 大招 Action IconId")
-            .AppendLine("属性 IconId: 3906=猛，3907=坚，3908=魔，3909=翔")
+            .AppendLine("種別: 魔獣使い魔獣属性マッピング")
+            .AppendLine("情報元: 魔獣図鑑番号 + 使役獣 DataId + 獣心技 Action IconId")
+            .AppendLine("属性 IconId: 3906=猛、3907=堅、3908=魔、3909=翔")
             .AppendLine();
 
         for (var number = 1; number <= BeastmasterCatalog.Entries.Count; number++)
@@ -350,15 +341,15 @@ public sealed class BeastmasterDebugDataService
             var attribute = iconId switch
             {
                 3906 => "猛",
-                3907 => "坚",
+                3907 => "堅",
                 3908 => "魔",
                 3909 => "翔",
-                _ => "未知",
+                _ => "不明",
             };
 
-            builder.AppendLine($"图鉴 {entry.Number:00} | {entry.Name} | DataId={dataId}");
-            builder.AppendLine($"  大招 ActionId={ultimateId} | {GetActionName(ultimate)} | IconId={iconId} | 属性={attribute}");
-            builder.AppendLine($"  释放 ActionId={releaseId} | {GetActionName(release)}");
+            builder.AppendLine($"図鑑 {entry.Number:00} | {entry.Name} | DataId={dataId}");
+            builder.AppendLine($"  獣心技 ActionId={ultimateId} | {GetActionName(ultimate)} | IconId={iconId} | 属性={attribute}");
+            builder.AppendLine($"  はなつ ActionId={releaseId} | {GetActionName(release)}");
         }
 
         return builder.ToString().TrimEnd();
@@ -367,9 +358,9 @@ public sealed class BeastmasterDebugDataService
     public string GetBeastmasterCatalogProbe()
     {
         var builder = new StringBuilder()
-            .AppendLine("类型: 魔兽图鉴客户端探针")
-            .AppendLine("模式: 只读，不打开窗口、不触发回调、不写入游戏数据")
-            .AppendLine("说明: 仅检查当前已存在的候选原生 Addon；需要先在游戏中打开相关图鉴页面。")
+            .AppendLine("種別: 魔獣図鑑クライアントプローブ")
+            .AppendLine("モード: 読み取り専用（ウィンドウ非展開・コールバック不発生・メモリ非書き込み）")
+            .AppendLine("説明: 現在存在するネイティブAddonのみ確認します。事前にゲーム内で魔獣図鑑を開いておく必要があります。")
             .AppendLine();
 
         var addonNames = new[] { "MonsterNote", "MobHunt", "MinionNotebook" };
@@ -381,7 +372,7 @@ public sealed class BeastmasterDebugDataService
                 builder.AppendLine($"Addon={addonName}");
                 if (addon.IsNull)
                 {
-                    builder.AppendLine("  状态: 不存在");
+                    builder.AppendLine("  状態: なし");
                     continue;
                 }
 
@@ -406,7 +397,7 @@ public sealed class BeastmasterDebugDataService
                     }
                     catch (Exception ex)
                     {
-                        renderedValue = $"<读取失败: {ex.GetType().Name}>";
+                        renderedValue = $"<読み取り失敗: {ex.GetType().Name}>";
                     }
 
                     builder.AppendLine($"  Value[{index++}] Type={value.ValueType} Value={renderedValue}");
@@ -414,7 +405,7 @@ public sealed class BeastmasterDebugDataService
             }
             catch (Exception ex)
             {
-                builder.AppendLine($"  读取失败: {ex.GetType().Name}: {ex.Message}");
+                builder.AppendLine($"  読み取り失敗: {ex.GetType().Name}: {ex.Message}");
             }
 
             builder.AppendLine();
@@ -427,18 +418,18 @@ public sealed class BeastmasterDebugDataService
     {
         var items = DalamudApi.DataManager.GetExcelSheet<Item>();
         var builder = new StringBuilder()
-            .AppendLine("类型: 推荐装备物品 ID")
-            .AppendLine("说明: 装备页面使用固定 ItemId 检测持有状态")
+            .AppendLine("種別: おすすめ装備アイテムID")
+            .AppendLine("説明: 装備画面は固定 ItemId により所持状態を検出します")
             .AppendLine();
 
         foreach (var plan in new[]
         {
-            (Name: "开荒装", Entries: BeastmasterEquipmentGuide.Level50Starter),
+            (Name: "攻略用装備", Entries: BeastmasterEquipmentGuide.Level50Starter),
             (Name: "BIS", Entries: BeastmasterEquipmentGuide.Level50BestInSlot),
         })
         {
             builder.AppendLine($"[{plan.Name}]");
-            foreach (var equipment in plan.Entries.Where(entry => entry.Name != "无装备"))
+            foreach (var equipment in plan.Entries.Where(entry => entry.Name != "装備なし" && entry.Name != "无装备"))
             {
                 var exactMatches = items
                     .Where(item => item.RowId != 0 && item.Name.ExtractText().Equals(equipment.Name, StringComparison.Ordinal))
@@ -449,7 +440,7 @@ public sealed class BeastmasterDebugDataService
                 {
                     foreach (var item in exactMatches)
                     {
-                        builder.AppendLine($"  精确匹配: ItemId={item.RowId} | {item.Name.ExtractText()}");
+                        builder.AppendLine($"  完全一致: ItemId={item.RowId} | {item.Name.ExtractText()}");
                     }
                 }
                 else
@@ -461,13 +452,13 @@ public sealed class BeastmasterDebugDataService
                         .ToArray();
                     if (candidates.Length == 0)
                     {
-                        builder.AppendLine("  未找到精确匹配或候选项");
+                        builder.AppendLine("  完全一致または候補が見つかりませんでした");
                     }
                     else
                     {
                         foreach (var item in candidates)
                         {
-                            builder.AppendLine($"  候选: ItemId={item.RowId} | {item.Name.ExtractText()}");
+                            builder.AppendLine($"  候補: ItemId={item.RowId} | {item.Name.ExtractText()}");
                         }
                     }
                 }
@@ -484,27 +475,27 @@ public sealed class BeastmasterDebugDataService
         var target = DalamudApi.TargetManager.Target;
         if (target is not IBattleChara battleTarget)
         {
-            return "类型: 当前目标\n无有效 BattleNpc 目标。";
+            return "種別: 現在のターゲット\n有効な BattleNpc ターゲットがありません。";
         }
 
         var player = DalamudApi.ObjectTable.LocalPlayer;
         var statuses = DalamudApi.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Status>();
         var builder = new StringBuilder()
-            .AppendLine("类型: 当前目标")
-            .AppendLine($"名称: {battleTarget.Name.TextValue}")
+            .AppendLine("種別: 現在のターゲット")
+            .AppendLine($"名前: {battleTarget.Name.TextValue}")
             .AppendLine($"EntityId: {battleTarget.EntityId}")
             .AppendLine($"BaseId: {battleTarget.BaseId}")
             .AppendLine($"HP: {battleTarget.CurrentHp} / {battleTarget.MaxHp}")
-            .AppendLine($"血量: {(battleTarget.MaxHp == 0 ? 0 : battleTarget.CurrentHp * 100f / battleTarget.MaxHp):0.##}%")
-            .AppendLine($"可选中: {battleTarget.IsTargetable}")
-            .AppendLine($"死亡: {battleTarget.IsDead}")
-            .AppendLine("状态:");
+            .AppendLine($"HP割合: {(battleTarget.MaxHp == 0 ? 0 : battleTarget.CurrentHp * 100f / battleTarget.MaxHp):0.##}%")
+            .AppendLine($"ターゲット可能: {battleTarget.IsTargetable}")
+            .AppendLine($"戦闘不能: {battleTarget.IsDead}")
+            .AppendLine("ステータス:");
 
         foreach (var status in battleTarget.StatusList.OrderBy(status => status.StatusId))
         {
             var name = statuses.TryGetRow(status.StatusId, out var row) ? row.Name.ExtractText() : "";
-            var sourceType = player != null && status.SourceId == player.EntityId ? "自身" : "他人/未知";
-            builder.AppendLine($"  StatusId={status.StatusId} | {name} | SourceId={status.SourceId} | 来源={sourceType} | 剩余={status.RemainingTime:0.0}s");
+            var sourceType = player != null && status.SourceId == player.EntityId ? "自身" : "他人/不明";
+            builder.AppendLine($"  StatusId={status.StatusId} | {name} | SourceId={status.SourceId} | 付与者={sourceType} | 残り={status.RemainingTime:0.0}s");
         }
 
         return builder.ToString().TrimEnd();
@@ -515,15 +506,15 @@ public sealed class BeastmasterDebugDataService
         var manager = ActionManager.Instance();
         if (manager == null)
         {
-            return "类型: 当前连击\nActionManager 不可用。";
+            return "種別: 現在のコンボ\nActionManagerが利用不可。";
         }
 
         return new StringBuilder()
-            .AppendLine("类型: 当前连击")
-            .AppendLine("模式: 只读")
+            .AppendLine("種別: 現在のコンボ")
+            .AppendLine("モード: 読み取り専用")
             .AppendLine($"Combo.Action: {manager->Combo.Action}")
             .AppendLine($"Combo.Timer: {manager->Combo.Timer:0.000}s")
-            .AppendLine("说明: Timer 大于 0 表示当前连击窗口仍有效。")
+            .AppendLine("説明: Timer が 0 より大きい場合、コンボ受付時間が有効です。")
             .ToString()
             .TrimEnd();
     }
@@ -533,7 +524,7 @@ public sealed class BeastmasterDebugDataService
         var manager = ActionManager.Instance();
         if (manager == null)
         {
-            return "类型: 技能状态\nActionManager 不可用。";
+            return "種別: アクション状態\nActionManagerが利用不可。";
         }
 
         var target = DalamudApi.TargetManager.Target;
@@ -542,11 +533,11 @@ public sealed class BeastmasterDebugDataService
         if (availability.ActionId == 0)
         {
             return new StringBuilder()
-                .AppendLine("类型: 技能状态")
-                .AppendLine($"输入 ActionId: {actionId}")
-                .AppendLine($"使用 GetAdjustedActionId: {(useAdjustedActionId ? "是" : "否")}")
-                .AppendLine($"技能: {availability.ActionName}")
-                .AppendLine("能否使用: 否")
+                .AppendLine("種別: アクション状態")
+                .AppendLine($"入力 ActionId: {actionId}")
+                .AppendLine($"GetAdjustedActionId を使用: {(useAdjustedActionId ? "はい" : "いいえ")}")
+                .AppendLine($"アクション: {availability.ActionName}")
+                .AppendLine("使用可能: いいえ")
                 .AppendLine($"判定: {availability.Reason}")
                 .ToString()
                 .TrimEnd();
@@ -576,33 +567,33 @@ public sealed class BeastmasterDebugDataService
         catch
         {
             return new StringBuilder()
-                .AppendLine("类型: 技能状态")
-                .AppendLine($"输入 ActionId: {actionId}")
-                .AppendLine($"使用 GetAdjustedActionId: {(useAdjustedActionId ? "是" : "否")}")
-                .AppendLine($"实际 ActionId: {resolvedActionId}")
-                .AppendLine($"技能: {availability.ActionName}")
-                .AppendLine("能否使用: 否")
-                .AppendLine("判定: 调用原生 API 时发生异常，ActionId 可能无法用于当前状态")
+                .AppendLine("種別: アクション状態")
+                .AppendLine($"入力 ActionId: {actionId}")
+                .AppendLine($"GetAdjustedActionId を使用: {(useAdjustedActionId ? "はい" : "いいえ")}")
+                .AppendLine($"実行 ActionId: {resolvedActionId}")
+                .AppendLine($"アクション: {availability.ActionName}")
+                .AppendLine("使用可能: いいえ")
+                .AppendLine("判定: ネイティブAPI呼び出し時に例外が発生しました。ActionIdが現在の状態に適していない可能性があります")
                 .ToString()
                 .TrimEnd();
         }
 
         return new StringBuilder()
-            .AppendLine("类型: 技能状态")
-            .AppendLine($"输入 ActionId: {actionId}")
-            .AppendLine($"使用 GetAdjustedActionId: {(useAdjustedActionId ? "是" : "否")}")
-            .AppendLine($"实际 ActionId: {resolvedActionId}")
-            .AppendLine($"技能: {availability.ActionName}")
-            .AppendLine($"能否使用: {(availability.CanUse ? "是" : "否")}")
+            .AppendLine("種別: アクション状態")
+            .AppendLine($"入力 ActionId: {actionId}")
+            .AppendLine($"GetAdjustedActionId を使用: {(useAdjustedActionId ? "はい" : "いいえ")}")
+            .AppendLine($"実行 ActionId: {resolvedActionId}")
+            .AppendLine($"アクション: {availability.ActionName}")
+            .AppendLine($"使用可能: {(availability.CanUse ? "はい" : "いいえ")}")
             .AppendLine($"判定: {availability.Reason}")
-            .AppendLine($"当前 CD: {recastRemaining:0.###}s / {recastTotal:0.###}s（已过 {recastElapsed:0.###}s）")
-            .AppendLine($"技能射程: {actionRange:0.###} yalms")
+            .AppendLine($"現在リキャスト: {recastRemaining:0.###}s / {recastTotal:0.###}s（経過 {recastElapsed:0.###}s）")
+            .AppendLine($"射程: {actionRange:0.###} yalms")
             .AppendLine(targetDistance.HasValue
-                ? $"当前目标距离: {targetDistance.Value:0.###} yalms | {target!.Name.TextValue}"
-                : "当前目标距离: 无当前目标或本地角色")
+                ? $"ターゲット距離: {targetDistance.Value:0.###} yalms | {target!.Name.TextValue}"
+                : "ターゲット距離: ターゲットまたはプレイヤーなし")
             .AppendLine(summon != null
-                ? $"当前魔兽: {summon.Name} | 图鉴 {summon.Number:00} | DataId={gauge.SummonDataId}"
-                : $"当前魔兽: {(string.IsNullOrWhiteSpace(gauge.SummonName) ? "未识别/未召唤" : gauge.SummonName)}")
+                ? $"使役獣: {summon.Name} | 図鑑 {summon.Number:00} | DataId={gauge.SummonDataId}"
+                : $"使役獣: {(string.IsNullOrWhiteSpace(gauge.SummonName) ? "未認識/未召喚" : gauge.SummonName)}")
             .ToString()
             .TrimEnd();
     }
@@ -613,63 +604,63 @@ public sealed class BeastmasterDebugDataService
         var target = DalamudApi.TargetManager.Target as IBattleChara;
         var manager = ActionManager.Instance();
         var builder = new StringBuilder()
-            .AppendLine("类型: 驯兽师协力验证数据")
-            .AppendLine("模式: 只读，不释放技能")
-            .AppendLine($"量谱: {(gauge.Available ? "可用" : gauge.Status)}")
-            .AppendLine($"技力: {gauge.Tp}/250")
-            .AppendLine($"兽力: {gauge.BeastPower}/250")
-            .AppendLine($"御兽之心: {gauge.BeastHeartStacks} 层")
-            .AppendLine($"兽灵之心: {gauge.BeastSoulStacks} 层")
-            .AppendLine($"当前兽笛: {(gauge.WhistleIndex is >= 1 and <= 3 ? $"{gauge.WhistleIndex} 号" : "未召唤")}");
+            .AppendLine("種別: 魔獣使い連携検証データ")
+            .AppendLine("モード: 読み取り専用（アクション非実行）")
+            .AppendLine($"ジョブHUD: {(gauge.Available ? "利用可能" : gauge.Status)}")
+            .AppendLine($"TP: {gauge.Tp}/250")
+            .AppendLine($"魔獣技力: {gauge.BeastPower}/250")
+            .AppendLine($"ビーストハート: {gauge.BeastHeartStacks} スタック")
+            .AppendLine($"ビーストソウル: {gauge.BeastSoulStacks} スタック")
+            .AppendLine($"現在の呼笛: {(gauge.WhistleIndex is >= 1 and <= 3 ? $"{gauge.WhistleIndex}号" : "未召喚")}");
 
         var entry = gauge.SummonEntry;
         if (entry == null)
         {
-            builder.AppendLine("当前魔兽: 未识别");
+            builder.AppendLine("現在の使役獣: 未認識");
         }
         else
         {
-            builder.AppendLine($"当前魔兽: {entry.Name}");
+            builder.AppendLine($"現在の使役獣: {entry.Name}");
             builder.AppendLine($"属性: {entry.Attribute}");
-            builder.AppendLine($"宠物大招资料: {entry.UltimateActionId} | {GetActionNameById(entry.UltimateActionId)}");
-            builder.AppendLine($"释放资料: {entry.ReleaseActionId} | {GetActionNameById(entry.ReleaseActionId)}");
+            builder.AppendLine($"獣心技データ: {entry.UltimateActionId} | {GetActionNameById(entry.UltimateActionId)}");
+            builder.AppendLine($"はなつデータ: {entry.ReleaseActionId} | {GetActionNameById(entry.ReleaseActionId)}");
         }
 
         if (target == null)
         {
-            builder.AppendLine("目标: 无有效 BattleNpc");
+            builder.AppendLine("ターゲット: 有効な BattleNpc なし");
         }
         else
         {
-            builder.AppendLine($"目标: {target.Name.TextValue} | EntityId={target.EntityId} | BaseId={target.BaseId}");
-            builder.AppendLine($"目标 HP: {target.CurrentHp}/{target.MaxHp} | 可选中={target.IsTargetable} | 死亡={target.IsDead}");
+            builder.AppendLine($"ターゲット: {target.Name.TextValue} | EntityId={target.EntityId} | BaseId={target.BaseId}");
+            builder.AppendLine($"ターゲット HP: {target.CurrentHp}/{target.MaxHp} | ターゲット可能={target.IsTargetable} | 戦闘不能={target.IsDead}");
         }
 
         if (manager == null || target == null)
         {
-            builder.AppendLine("Action 状态: ActionManager 或目标不可用");
+            builder.AppendLine("アクション状態: ActionManagerまたはターゲットが利用不可");
         }
         else
         {
-            builder.AppendLine("Action 状态:");
+            builder.AppendLine("アクション状態:");
             foreach (var actionId in new uint[] { 47093, 44884, 44887, 44888, 44889 })
             {
                 var status = manager->GetActionStatus(ActionType.Action, actionId, target.GameObjectId);
-                builder.AppendLine($"  ActionId={actionId} | {GetActionNameById(actionId)} | 状态码={status}");
+                builder.AppendLine($"  ActionId={actionId} | {GetActionNameById(actionId)} | ステータスコード={status}");
             }
         }
 
-        builder.AppendLine("自身属性状态:");
+        builder.AppendLine("プレイヤー属性ステータス:");
         var player = DalamudApi.ObjectTable.LocalPlayer;
         if (player == null)
         {
-            builder.AppendLine("  本地角色不可用");
+            builder.AppendLine("  プレイヤーキャラクターが利用不可");
         }
         else
         {
             foreach (var status in player.StatusList.Where(status => status.StatusId is >= 4595 and <= 4600))
             {
-                builder.AppendLine($"  StatusId={status.StatusId} | SourceId={status.SourceId} | 剩余={status.RemainingTime:0.0}s");
+                builder.AppendLine($"  StatusId={status.StatusId} | SourceId={status.SourceId} | 残り={status.RemainingTime:0.0}s");
             }
         }
 
@@ -692,25 +683,25 @@ public sealed class BeastmasterDebugDataService
     }
 
     private static string GetActionName(Lumina.Excel.Sheets.Action action)
-        => action.RowId == 0 ? "未找到" : action.Name.ExtractText();
+        => action.RowId == 0 ? "未検出" : action.Name.ExtractText();
 
     private static string GetActionNameById(uint actionId)
         => DalamudApi.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Action>().TryGetRow(actionId, out var action)
             ? GetActionName(action)
-            : "未找到";
+            : "未検出";
 
     public unsafe string GetBeastmasterGaugeRaw()
     {
         const uint beastmasterClassJobId = 43;
         if (DalamudApi.PlayerState.ClassJob.RowId != beastmasterClassJobId)
         {
-            return "类型: 驯兽师量谱原始数据\n请先切换为驯兽师。";
+            return "種別: 魔獣使いジョブHUD生データ\n先に魔獣使いにジョブチェンジしてください。";
         }
 
         var snapshot = BeastmasterGaugeSnapshot.ReadRaw();
         if (!snapshot.Available)
         {
-            return $"类型: 驯兽师量谱原始数据\n{snapshot.Status}。";
+            return $"種別: 魔獣使いジョブHUD生データ\n{snapshot.Status}。";
         }
 
         var address = snapshot.Address;
@@ -729,8 +720,8 @@ public sealed class BeastmasterDebugDataService
         }
 
         var builder = new StringBuilder()
-            .AppendLine("类型: 驯兽师量谱原始数据")
-            .AppendLine("模式: 只读，不写入内存")
+            .AppendLine("種別: 魔獣使いジョブHUD生データ")
+            .AppendLine("モード: 読み取り専用（メモリ非書き込み）")
             .AppendLine($"ClassJob: {beastmasterClassJobId}")
             .AppendLine($"Address: 0x{address.ToInt64():X}")
             .AppendLine($"Length: {length} bytes")
@@ -748,7 +739,7 @@ public sealed class BeastmasterDebugDataService
         query = query.Trim();
         if (query.Length == 0)
         {
-            return $"{category}\n请输入名称关键词后再读取。";
+            return $"{category}\n名称キーワードを入力してください。";
         }
 
         var matches = rows
@@ -761,8 +752,8 @@ public sealed class BeastmasterDebugDataService
         var truncated = matches.Length > ResultLimit;
 
         var builder = new StringBuilder()
-            .AppendLine($"类型: {category}")
-            .AppendLine($"关键词: {query}");
+            .AppendLine($"種別: {category}")
+            .AppendLine($"キーワード: {query}");
         foreach (var match in matches.Take(ResultLimit))
         {
             builder.Append("RowId=")
@@ -773,11 +764,11 @@ public sealed class BeastmasterDebugDataService
 
         if (matches.Length == 0)
         {
-            builder.AppendLine("未找到匹配内容。");
+            builder.AppendLine("一致する項目が見つかりませんでした。");
         }
         else if (truncated)
         {
-            builder.AppendLine($"结果超过 {ResultLimit} 条，请使用更具体的关键词。");
+            builder.AppendLine($"検索結果が {ResultLimit} 件を超えました。より具体的なキーワードを指定してください。");
         }
 
         return builder.ToString().TrimEnd();
@@ -788,31 +779,26 @@ public sealed class BeastmasterDebugDataService
         var player = DalamudApi.ObjectTable.LocalPlayer;
         if (player == null)
         {
-            return "类型: 目标捕获判定\n角色未加载。";
+            return "種別: 「とらえる」判定\nキャラクター未ロード。";
         }
 
         if (player.ClassJob.RowId != 43)
         {
-            return "类型: 目标捕获判定\n当前职业不是驯兽师。";
+            return "種別: 「とらえる」判定\n現在のクラス・ジョブが魔獣使いではありません。";
         }
 
         if (DalamudApi.TargetManager.Target is not IBattleChara target)
         {
-            return "类型: 目标捕获判定\n当前未选择有效目标。";
+            return "種別: 「とらえる」判定\n有効なターゲットが選択されていません。";
         }
 
         var manager = ActionManager.Instance();
         if (manager == null)
         {
-            return "类型: 目标捕获判定\nActionManager 不可用。";
+            return "種別: 「とらえる」判定\nActionManagerが利用不可。";
         }
 
-        var actions = DalamudApi.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Action>();
-        var captureActionId = actions
-            ?.Where(a => a.RowId != 0 && a.Name.ExtractText().Equals("捕获", StringComparison.Ordinal))
-            .OrderBy(a => a.RowId)
-            .Select(a => a.RowId)
-            .FirstOrDefault() ?? 0;
+        var captureActionId = 44880u;
 
         var actionStatus = captureActionId != 0
             ? manager->GetActionStatus(ActionType.Action, captureActionId, target.GameObjectId)
@@ -824,19 +810,19 @@ public sealed class BeastmasterDebugDataService
             : target.CurrentHp * 100f / target.MaxHp;
 
         var builder = new StringBuilder()
-            .AppendLine("类型: 目标捕获判定")
-            .AppendLine($"目标: {target.Name.TextValue} | BaseId={target.BaseId}")
+            .AppendLine("種別: 「とらえる」判定")
+            .AppendLine($"ターゲット: {target.Name.TextValue} | BaseId={target.BaseId}")
             .AppendLine($"HP: {target.CurrentHp}/{target.MaxHp} ({hpPercent:0.#}%)")
-            .AppendLine($"可选中: {target.IsTargetable} | 已死亡: {(target.IsDead || target.CurrentHp == 0)}")
-            .AppendLine($"捕获 ActionId: {(captureActionId != 0 ? captureActionId.ToString() : "未找到")}")
-            .AppendLine($"GetActionStatus 状态码: {(actionStatus == 0 ? "0（可用）" : actionStatus.ToString())}")
-            .AppendLine($"游戏判定能否捕获: {(actionStatus == 0 ? "可以" : "不可以")}")
+            .AppendLine($"ターゲット可能: {target.IsTargetable} | 戦闘不能: {(target.IsDead || target.CurrentHp == 0)}")
+            .AppendLine($"「とらえる」ActionId: {(captureActionId != 0 ? captureActionId.ToString() : "未検出")}")
+            .AppendLine($"GetActionStatus ステータスコード: {(actionStatus == 0 ? "0（実行可能）" : actionStatus.ToString())}")
+            .AppendLine($"ゲーム内実行判定: {(actionStatus == 0 ? "可能" : "不可")}")
             .AppendLine()
-            .AppendLine("目标当前状态列表:");
+            .AppendLine("ターゲットの現在のステータス一覧:");
 
         if (!target.StatusList.Any())
         {
-            builder.AppendLine("  （无状态）");
+            builder.AppendLine("  （ステータスなし）");
         }
         else
         {
@@ -846,11 +832,99 @@ public sealed class BeastmasterDebugDataService
                     ? row.Name.ExtractText()
                     : "";
                 var isSource = s.SourceId == player.EntityId;
-                builder.AppendLine($"  StatusId={s.StatusId} | {statusName} | 剩余={s.RemainingTime:0.0}s | 来源={(isSource ? "自身" : $"他人({s.SourceId})")}");
+                builder.AppendLine($"  StatusId={s.StatusId} | {statusName} | 残り={s.RemainingTime:0.0}s | 付与者={(isSource ? "自身" : $"他人({s.SourceId})")}");
             }
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    public string GetAutoOutputConditionDebug()
+    {
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        var builder = new StringBuilder()
+            .AppendLine("種別: 自動出力キャラクター状態診断")
+            .AppendLine($"ログイン済み: {DalamudApi.ClientState.IsLoggedIn}")
+            .AppendLine($"キャラクターロード済み: {player != null}")
+            .AppendLine($"クラス・ジョブ ID: {DalamudApi.PlayerState.ClassJob.RowId}")
+            .AppendLine($"BetweenAreas（エリア移動中）: {DalamudApi.Condition[ConditionFlag.BetweenAreas]}")
+            .AppendLine($"Mounted（騎乗中）: {DalamudApi.Condition[ConditionFlag.Mounted]}")
+            .AppendLine($"OccupiedInCutSceneEvent（イベント中）: {DalamudApi.Condition[ConditionFlag.OccupiedInCutSceneEvent]}")
+            .AppendLine($"InCombat（戦闘中）: {DalamudApi.Condition[ConditionFlag.InCombat]}");
+
+        if (player == null)
+        {
+            return builder.ToString().TrimEnd();
+        }
+
+        builder.AppendLine($"キャラクター HP: {player.CurrentHp}/{player.MaxHp}")
+            .AppendLine($"詠唱中: {player.IsCasting}")
+            .AppendLine($"オブジェクト種別: {player.ObjectKind}")
+            .AppendLine($"現在のターゲット: {DalamudApi.TargetManager.Target?.Name.TextValue ?? "なし"}");
+        return builder.ToString().TrimEnd();
+    }
+
+    public unsafe string GetSkillSequenceValidationDebug()
+    {
+        const uint borrowActionId = 44895;
+        const uint beastSkillActionId = 44886;
+        const uint releaseActionId = 44890;
+        const uint beastHideActionId = 44896;
+        const uint shieldChargeActionId = 44893;
+
+        var gauge = BeastmasterGaugeSnapshot.Read();
+        var countdown = countdownService.Snapshot;
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        var target = DalamudApi.TargetManager.Target;
+        var manager = ActionManager.Instance();
+        var builder = new StringBuilder()
+            .AppendLine("種別: スキルシーケンス検証データ")
+            .AppendLine("モード: 読み取り専用（アクション非実行）")
+            .AppendLine($"ログイン状態: {DalamudApi.ClientState.IsLoggedIn}")
+            .AppendLine($"ジョブID: {DalamudApi.PlayerState.ClassJob.RowId}")
+            .AppendLine($"戦闘中（InCombat）: {DalamudApi.Condition[ConditionFlag.InCombat]}")
+            .AppendLine($"エリア移動中（BetweenAreas）: {DalamudApi.Condition[ConditionFlag.BetweenAreas]}")
+            .AppendLine($"プレイヤーHP: {(player == null ? "未ロード" : $"{player.CurrentHp}/{player.MaxHp}")}")
+            .AppendLine($"プレイヤー詠唱中: {player?.IsCasting}")
+            .AppendLine($"現在のターゲット: {target?.Name.TextValue ?? "なし"} | GameObjectId={(target?.GameObjectId.ToString() ?? "0")}")
+            .AppendLine($"現在の呼笛: {(gauge.WhistleIndex is >= 1 and <= 3 ? $"{gauge.WhistleIndex}号呼笛" : "未召喚")}")
+            .AppendLine($"現在の使役獣: {(gauge.SummonEntry?.Name ?? gauge.SummonName)} | DataId={gauge.SummonDataId}")
+            .AppendLine($"ゲーム内カウントダウン利用可能: {countdown.Available} | 状態={countdown.Status}")
+            .AppendLine($"ゲーム内カウントダウン作動中: {countdown.Active} | 残り={countdown.TimeRemaining:0.000}s | 開始者={countdown.Initiator}")
+            .AppendLine($"キャッシュサンプリング時間 UTC: {(countdownService.LastPolledUtc == DateTime.MinValue ? "未サンプリング" : countdownService.LastPolledUtc.ToString("O"))}")
+            .AppendLine($"直近のカウントダウン遷移: {countdownService.LastTransition} | 時間 UTC={(countdownService.LastTransitionUtc == DateTime.MinValue ? "なし" : countdownService.LastTransitionUtc.ToString("O"))}")
+            .AppendLine();
+
+        if (manager == null)
+        {
+            builder.AppendLine("ActionManager: 利用不可");
+        }
+        else
+        {
+            AppendSequenceAction(builder, manager, "かりる", borrowActionId, 0);
+            AppendSequenceAction(builder, manager, "魔獣技", beastSkillActionId, 0);
+            AppendSequenceAction(builder, manager, "はなつ", releaseActionId, target?.GameObjectId ?? 0);
+            AppendSequenceAction(builder, manager, "百獣の皮 期待値", beastHideActionId, 0, adjust: false);
+            AppendSequenceAction(builder, manager, "シールドチャージ", shieldChargeActionId, target?.GameObjectId ?? 0, adjust: false);
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static unsafe void AppendSequenceAction(
+        StringBuilder builder,
+        ActionManager* manager,
+        string label,
+        uint actionId,
+        ulong targetId,
+        bool adjust = true)
+    {
+        var adjustedActionId = adjust ? manager->GetAdjustedActionId(actionId) : actionId;
+        var status = adjustedActionId == 0
+            ? uint.MaxValue
+            : manager->GetActionStatus(ActionType.Action, adjustedActionId, targetId);
+        builder.AppendLine(
+            $"{label}: Base={actionId} | Adjusted={adjustedActionId} | {GetActionNameById(adjustedActionId)} | Target={targetId} | Status={status}");
     }
 
     private static string JoinLines(params string[] lines)

@@ -27,7 +27,7 @@ public sealed unsafe class BeastmasterCatalogSyncService
     private long nextActionAt;
     private long scanStartedAt;
     private bool scanning;
-    private string status = "尚未同步。";
+    private string status = "未同期。";
     private int? expectedCapturedTotal;
 
     public BeastmasterCatalogSyncService(BeastmasterProgressService progressService)
@@ -37,12 +37,13 @@ public sealed unsafe class BeastmasterCatalogSyncService
 
     public string Status => status;
     public bool IsScanning => scanning;
+    public string Diagnostic { get; private set; } = string.Empty;
 
     public void RequestSync()
     {
         if (progressService.CurrentCharacterKey.Length == 0)
         {
-            status = "请先登录角色。";
+            status = "キャラクターでログインしてください。";
             return;
         }
 
@@ -52,8 +53,9 @@ public sealed unsafe class BeastmasterCatalogSyncService
         nextActionAt = 0;
         scanStartedAt = Environment.TickCount64;
         expectedCapturedTotal = null;
+        Diagnostic = string.Empty;
         scanning = true;
-        status = "正在读取当前角色的魔兽图鉴…";
+        status = "魔獣手帳を読み込み中…";
     }
 
     public void Update()
@@ -67,7 +69,7 @@ public sealed unsafe class BeastmasterCatalogSyncService
         {
             if (progressService.CurrentCharacterKey.Length == 0)
             {
-                Stop("角色已登出，同步已取消。", clearStates: true);
+                Stop("ログアウトしたため、同期をキャンセルしました。", clearStates: true);
                 return;
             }
 
@@ -90,7 +92,7 @@ public sealed unsafe class BeastmasterCatalogSyncService
             }
             else if (expectedCapturedTotal != page.CapturedTotal)
             {
-                throw new InvalidOperationException("图鉴两页的已捕获总数不一致。");
+                throw new InvalidOperationException("魔獣手帳のページ間で捕獲総数が一致しません。");
             }
 
             foreach (var entry in page.Entries)
@@ -103,18 +105,18 @@ public sealed unsafe class BeastmasterCatalogSyncService
                 var unlocked = states.Where(pair => pair.Value).Select(pair => pair.Key).ToHashSet();
                 if (expectedCapturedTotal != unlocked.Count)
                 {
-                    throw new InvalidOperationException("图鉴状态与已捕获总数不一致。");
+                    throw new InvalidOperationException("魔獣手帳の状態と捕獲総数が一致しません。");
                 }
 
                 var changed = progressService.ReplaceCatalogProgress(unlocked);
-                Stop($"同步完成：已解锁 {unlocked.Count}/{BeastmasterCatalog.Entries.Count}，更新 {changed} 项。", clearStates: false);
+                Stop($"同期完了：登録済み {unlocked.Count}/{BeastmasterCatalog.Entries.Count} 体、更新 {changed} 件。", clearStates: false);
                 return;
             }
 
             var currentPageValue = GetPage(addon);
             if (currentPageValue is not (0 or 1))
             {
-                status = "等待图鉴页码数据刷新…";
+                status = "魔獣手帳のページデータ更新待ち…";
                 return;
             }
 
@@ -131,18 +133,18 @@ public sealed unsafe class BeastmasterCatalogSyncService
                 {
                     if (pageRequestAttempts >= 3)
                     {
-                        throw new InvalidOperationException("图鉴翻页未响应。");
+                        throw new InvalidOperationException("魔獣手帳のページめくりに応答がありません。");
                     }
 
                     pageRequestAttempts++;
                     nextActionAt = Environment.TickCount64 + 500;
                     if (!RequestPage(addon, (uint)requestedPage))
                     {
-                        status = $"图鉴翻页未接受，正在重试 ({pageRequestAttempts}/3)…";
+                        status = $"ページめくり再試行中 ({pageRequestAttempts}/3)…";
                         return;
                     }
 
-                    status = $"正在等待第 {requestedPage + 1} 页刷新…";
+                    status = $"{requestedPage + 1} ページの更新待ち…";
                     return;
                 }
             }
@@ -157,20 +159,22 @@ public sealed unsafe class BeastmasterCatalogSyncService
             nextActionAt = Environment.TickCount64 + 500;
             if (!RequestPage(addon, (uint)requestedPage))
             {
-                status = "图鉴翻页未接受，准备重试…";
+                status = "ページめくりを再試行します…";
                 return;
             }
 
-            status = $"正在等待第 {requestedPage + 1} 页刷新…";
+            status = $"{requestedPage + 1} ページの更新待ち…";
         }
         catch (InvalidOperationException ex) when (Environment.TickCount64 - scanStartedAt < 15000)
         {
+            Diagnostic = ex.Message;
             nextActionAt = Environment.TickCount64 + 250;
-            status = $"等待图鉴数据刷新…{ex.Message}";
+            status = $"手帳データ更新待ち…{ex.Message}";
         }
         catch (Exception ex)
         {
-            Stop($"同步失败，未修改进度：{ex.Message}", clearStates: true);
+            Diagnostic = ex.Message;
+            Stop($"同期失敗（進捗は変更されませんでした）：{ex.Message}", clearStates: true);
         }
     }
 
@@ -210,15 +214,15 @@ public sealed unsafe class BeastmasterCatalogSyncService
     {
         if (addon->AtkValues == null || addon->AtkValuesCount > MaxAtkValues || addon->AtkValuesCount <= FirstEntryValueIndex + (EntriesPerPage - 1) * EntryStride + 5)
         {
-            throw new InvalidOperationException("图鉴字段数量未通过校验。");
+            throw new InvalidOperationException("魔獣手帳のフィールド数検証に失敗しました。");
         }
 
-        var page = GetPage(addon) ?? throw new InvalidOperationException("图鉴页码未刷新。");
+        var page = GetPage(addon) ?? throw new InvalidOperationException("魔獣手帳のページ番号が更新されていません。");
         var totalText = ReadString(addon->AtkValues[TotalValueIndex]);
         var parts = totalText.Split('/');
         if (parts.Length != 2 || parts[1] != "50" || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var capturedTotal))
         {
-            throw new InvalidOperationException("图鉴总数未通过校验。");
+            throw new InvalidOperationException("魔獣手帳の総数検証に失敗しました。");
         }
 
         var result = new List<(int Number, bool Captured)>(EntriesPerPage);
@@ -232,13 +236,19 @@ public sealed unsafe class BeastmasterCatalogSyncService
             var number = 1 + page * EntriesPerPage + index;
             var captured = capturedValue.TypeCode() == 2 && capturedValue.Bool;
 
+            var expectedIcon = captured ? CapturedIconBase + (uint)number : MissingIcon;
             if (numberValue.TypeCode() != 5 || numberValue.UInt != number
-                || ReadString(textValue) != number.ToString(CultureInfo.InvariantCulture)
                 || capturedValue.TypeCode() != 2
                 || iconValue.TypeCode() != 5
-                || iconValue.UInt != (captured ? CapturedIconBase + (uint)number : MissingIcon))
+                || iconValue.UInt != expectedIcon)
             {
-                throw new InvalidOperationException($"图鉴第 {number:00} 项结构未通过校验。");
+                throw new InvalidOperationException(
+                    $"魔獣手帳 No.{number:00} の構造検証に失敗しました。\n"
+                    + $"ページ={page}、AtkValuesCount={addon->AtkValuesCount}\n"
+                    + $"番号フィールド：{FormatValue(numberValue)}、期待値 TypeCode=5 UInt={number}\n"
+                    + $"捕獲フィールド：{FormatValue(capturedValue)}、期待値 TypeCode=2 Bool={captured}\n"
+                    + $"アイコンフィールド：{FormatValue(iconValue)}、期待値 TypeCode=5 UInt={expectedIcon}\n"
+                    + $"テキストフィールド（診断用）：{FormatValue(textValue)}");
             }
 
             result.Add((number, captured));
@@ -247,7 +257,7 @@ public sealed unsafe class BeastmasterCatalogSyncService
         var pageCaptured = result.Count(entry => entry.Captured);
         if (pageCaptured > capturedTotal || pageCaptured > EntriesPerPage)
         {
-            throw new InvalidOperationException("图鉴收集数量未通过校验。");
+            throw new InvalidOperationException("魔獣手帳の捕獲数検証に失敗しました。");
         }
 
         return new CatalogPage(result, capturedTotal);
@@ -258,13 +268,13 @@ public sealed unsafe class BeastmasterCatalogSyncService
         var module = AgentModule.Instance();
         if (module == null)
         {
-            throw new InvalidOperationException("游戏界面尚未加载。");
+            throw new InvalidOperationException("ゲームUIがロードされていません。");
         }
 
         var agent = module->GetAgentByInternalId((AgentId)500);
         if (agent == null)
         {
-            throw new InvalidOperationException("魔兽图鉴界面不可用。");
+            throw new InvalidOperationException("魔獣手帳UIが利用不可です。");
         }
 
         agent->Show();
@@ -296,6 +306,12 @@ public sealed unsafe class BeastmasterCatalogSyncService
         }
 
         return value.String.ToString() ?? string.Empty;
+    }
+
+    private static unsafe string FormatValue(AtkValue value)
+    {
+        var text = ReadString(value).Replace("\r", "\\r").Replace("\n", "\\n");
+        return $"Type=0x{(int)value.Type:X}, TypeCode={value.TypeCode()}, UInt={value.UInt}, Int={value.Int}, Bool={value.Bool}, String=\"{text}\"";
     }
 
     private void Stop(string message, bool clearStates)

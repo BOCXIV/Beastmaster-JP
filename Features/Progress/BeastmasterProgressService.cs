@@ -43,13 +43,13 @@ public sealed class BeastmasterProgressService
         {
             if (!DalamudApi.ClientState.IsLoggedIn)
             {
-                return "未登录";
+                return "未ログイン";
             }
 
             var player = DalamudApi.ObjectTable.LocalPlayer;
             if (player == null)
             {
-                return "角色数据加载中";
+                return "キャラクター情報取得中";
             }
 
             var world = player.HomeWorld.Value.Name.ExtractText();

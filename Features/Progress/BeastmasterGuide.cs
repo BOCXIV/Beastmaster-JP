@@ -6,21 +6,21 @@ public static class BeastmasterGuide
     [
         new(
             "sample-introduction",
-            "示例阶段一：初识驯兽师",
-            "仅用于验证阶段与手动进度功能，不代表真实游戏流程。",
+            "サンプルフェーズ1：魔獣使い入門",
+            "フェーズ機能および手動進捗機能の検証用であり、実際のゲーム内進行とは異なります。",
             [
-                new("sample-introduction-read", "阅读示例说明", BeastmasterObjectiveType.Explore, "确认此处展示的是临时示例资料。"),
-                new("sample-introduction-npc", "与示例 NPC 交谈", BeastmasterObjectiveType.TalkToNpc, "手动勾选以测试单项目标进度。"),
-                new("sample-introduction-quest", "完成示例任务", BeastmasterObjectiveType.Quest, "此任务名称和流程均为占位内容。"),
+                new("sample-introduction-read", "サンプル説明を読む", BeastmasterObjectiveType.Explore, "一時的なサンプルデータであることを確認します。"),
+                new("sample-introduction-npc", "サンプルNPCと話す", BeastmasterObjectiveType.TalkToNpc, "チェックボックスを手動で切り替えて個別目標の進捗をテストします。"),
+                new("sample-introduction-quest", "サンプルクエストを完了する", BeastmasterObjectiveType.Quest, "このクエスト名および内容はプレースホルダーです。"),
             ]),
         new(
             "sample-training",
-            "示例阶段二：基础训练",
-            "仅用于验证不同阶段之间的选择和独立完成度。",
+            "サンプルフェーズ2：基礎訓練",
+            "フェーズ間の切り替えと達成度の個別管理を検証するためのものです。",
             [
-                new("sample-training-monster", "击败示例怪物", BeastmasterObjectiveType.Monster, "不会自动追踪击杀，请手动勾选。"),
-                new("sample-training-item", "取得示例物品", BeastmasterObjectiveType.Item, "不会扫描背包，请手动勾选。"),
-                new("sample-training-duty", "完成示例挑战", BeastmasterObjectiveType.Duty, "不会读取副本状态，请手动勾选。"),
+                new("sample-training-monster", "サンプルモンスターを討伐", BeastmasterObjectiveType.Monster, "自動追跡は行われません。手動でチェックを入れてください。"),
+                new("sample-training-item", "サンプルアイテムを入手", BeastmasterObjectiveType.Item, "所持品の自動検出は行われません。手動でチェックを入れてください。"),
+                new("sample-training-duty", "サンプルコンテンツを攻略", BeastmasterObjectiveType.Duty, "コンテンツ突入状態の自動判定は行われません。手動でチェックを入れてください。"),
             ]),
     ];
 }

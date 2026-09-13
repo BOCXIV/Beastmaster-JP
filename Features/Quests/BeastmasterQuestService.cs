@@ -76,7 +76,7 @@ public sealed class BeastmasterQuestService
                 rowId,
                 questSheet.TryGetRow(rowId, out var previousQuest)
                     ? previousQuest.Name.ExtractText()
-                    : $"任务 {rowId}"))
+                    : $"クエスト {rowId}"))
             .ToArray();
         return prerequisites[questRowId];
     }
@@ -99,10 +99,10 @@ public sealed class BeastmasterQuestService
     {
         var manager = QuestManager.Instance();
         var builder = new StringBuilder()
-            .AppendLine("类型: 当前所有普通任务状态");
+            .AppendLine("種別: 現在の通常クエスト受注状態");
         if (manager == null)
         {
-            builder.AppendLine("QuestManager: 不可用。");
+            builder.AppendLine("QuestManager: 利用不可。");
             return builder.ToString().TrimEnd();
         }
 
@@ -121,7 +121,7 @@ public sealed class BeastmasterQuestService
             count++;
             var hasQuestRow = questRowsByRuntimeId.TryGetValue(work.QuestId, out var quest);
             var rowId = hasQuestRow ? quest.RowId : work.QuestId;
-            var name = hasQuestRow ? quest.Name.ExtractText() : "未知任务";
+            var name = hasQuestRow ? quest.Name.ExtractText() : "不明なクエスト";
             builder.AppendLine($"RowId={rowId} | RuntimeQuestId={work.QuestId} | {name}");
             builder.AppendLine($"  Sequence={work.Sequence} | Flags={work.Flags} | AcceptClassJob={work.AcceptClassJob}");
             var variables = new byte[6];
@@ -133,7 +133,7 @@ public sealed class BeastmasterQuestService
             builder.AppendLine($"  Variables={string.Join(',', variables)}");
         }
 
-        builder.AppendLine($"任务数量={count}");
+        builder.AppendLine($"クエスト総数={count}");
         return builder.ToString().TrimEnd();
     }
 

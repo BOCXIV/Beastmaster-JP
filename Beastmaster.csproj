@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <AssemblyVersion>0.1.14.0</AssemblyVersion>
+    <AssemblyVersion>0.1.24.0</AssemblyVersion>
     <InternalName>Beastmaster</InternalName>
     <RootNamespace>Beastmaster</RootNamespace>
     <Description>A Dalamud assistant plugin for Beastmaster.</Description>
@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <DalamudLibPath>$(APPDATA)\XIVLauncherCN\addon\Hooks\dev\</DalamudLibPath>
+    <DalamudLibPath>$(APPDATA)\XIVLauncher\addon\Hooks\dev\</DalamudLibPath>
     <OutputPath>output\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <ProduceReferenceAssembly>false</ProduceReferenceAssembly>

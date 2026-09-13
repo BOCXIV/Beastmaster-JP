@@ -84,18 +84,18 @@ public sealed class BeastmasterGaugeSnapshot
     {
         if (!DalamudApi.ClientState.IsLoggedIn)
         {
-            return Unavailable("未登录");
+            return Unavailable("未ログイン");
         }
 
         if (DalamudApi.PlayerState.ClassJob.RowId != BeastmasterClassJobId)
         {
-            return Unavailable("当前职业不是驯兽师");
+            return Unavailable("現在のクラス・ジョブが魔獣使いではありません");
         }
 
         var manager = JobGaugeManager.Instance();
         if (manager == null)
         {
-            return Unavailable("JobGaugeManager.Instance() 不可用");
+            return Unavailable("JobGaugeManager.Instance() を取得できません");
         }
 
         var bytes = new byte[RawGaugeLength];
@@ -112,7 +112,7 @@ public sealed class BeastmasterGaugeSnapshot
         var hasPurpleStatus = player?.StatusList.Any(status => status.StatusId == PurpleStatusId) == true;
         return new BeastmasterGaugeSnapshot(
             true,
-            "读取正常",
+            "正常取得中",
             bytes,
             address,
             summonDataId,
@@ -127,7 +127,7 @@ public sealed class BeastmasterGaugeSnapshot
 
     public string FormatRawBytes()
         => Bytes.Length == 0
-            ? "不可用"
+            ? "利用不可"
             : string.Join(' ', Bytes.Select(value => value.ToString("X2")));
 
     public static BeastmasterGaugeSnapshot Unavailable(string status)

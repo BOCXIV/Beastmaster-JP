@@ -61,7 +61,7 @@ public sealed class BeastmasterNavigationService : IDisposable
 
         if (!IsVnavmeshInstalled)
         {
-            DalamudApi.ChatGui.Print("[驯兽师助手] vnavmesh 未加载，无法开始导航。");
+            DalamudApi.ChatGui.Print("[Beastmaster] vnavmesh がロードされていないため、ナビゲーションを開始できません。");
             return false;
         }
 
@@ -80,7 +80,7 @@ public sealed class BeastmasterNavigationService : IDisposable
         {
             if (!IsVnavmeshInstalled)
             {
-                DalamudApi.ChatGui.Print("[驯兽师助手] vnavmesh 未加载，无法开始导航。");
+                DalamudApi.ChatGui.Print("[Beastmaster] vnavmesh がロードされていないため、ナビゲーションを開始できません。");
             }
 
             return false;
@@ -102,16 +102,20 @@ public sealed class BeastmasterNavigationService : IDisposable
         }
 
         var maps = DalamudApi.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Map>();
-        var map = maps
-            .FirstOrDefault(candidate => candidate.TerritoryType.RowId != 0
+        var map = entry.MapRowId != 0
+            ? maps.FirstOrDefault(candidate => candidate.RowId == entry.MapRowId
+                && candidate.TerritoryType.RowId != 0
                 && candidate.SizeFactor > 0
-                && (entry.TerritoryType == 0 || candidate.TerritoryType.RowId == entry.TerritoryType)
-                && (entry.MapRowId == 0 || candidate.RowId == entry.MapRowId)
-                && candidate.PlaceName.Value.Name.ExtractText().Equals(entry.Location, StringComparison.Ordinal));
+                && (entry.TerritoryType == 0 || candidate.TerritoryType.RowId == entry.TerritoryType))
+            : default;
 
-        // Some client map rows use a different territory/map pairing than the
-        // catalog source. Fall back to the localized map name and retain the
-        // catalog identifiers for navigation and map flags.
+        if (map.RowId == 0 && entry.TerritoryType != 0)
+        {
+            map = maps.FirstOrDefault(candidate => candidate.TerritoryType.RowId == entry.TerritoryType
+                && candidate.SizeFactor > 0);
+        }
+
+        // Names are localized, so only use them when catalog identifiers are absent.
         if (map.RowId == 0)
         {
             map = maps.FirstOrDefault(candidate => candidate.TerritoryType.RowId != 0
@@ -121,7 +125,7 @@ public sealed class BeastmasterNavigationService : IDisposable
 
         if (map.RowId == 0 && !(entry.WorldX.HasValue && entry.WorldY.HasValue && entry.WorldZ.HasValue))
         {
-            DalamudApi.ChatGui.Print($"[驯兽师助手] 客户端地图表中找不到 {entry.Location}。");
+            DalamudApi.ChatGui.Print($"[Beastmaster] マップデータから {entry.Location} が見つかりませんでした。");
             return false;
         }
 
@@ -167,7 +171,7 @@ public sealed class BeastmasterNavigationService : IDisposable
         }
         if (duty.RowId == 0)
         {
-            DalamudApi.ChatGui.Print($"[驯兽师助手] 任务搜索器中找不到“{entry.Location}”。");
+            DalamudApi.ChatGui.Print($"[Beastmaster] コンテンツファインダーから「{entry.Location}」が見つかりませんでした。");
             return false;
         }
 
@@ -179,7 +183,7 @@ public sealed class BeastmasterNavigationService : IDisposable
         catch (Exception ex)
         {
             DalamudApi.Log.Warning(ex, "Failed to open Duty Finder for {DutyName}.", entry.Location);
-            DalamudApi.ChatGui.Print($"[驯兽师助手] 打开任务搜索器失败：{ex.Message}");
+            DalamudApi.ChatGui.Print($"[Beastmaster] コンテンツファインダーを開けませんでした：{ex.Message}");
             return false;
         }
     }
@@ -213,7 +217,7 @@ public sealed class BeastmasterNavigationService : IDisposable
             {
                 pendingVnavLocation = location;
                 pendingVnavFieldNavigation = true;
-                DalamudApi.ChatGui.Print("[驯兽师助手] vnavmesh 未就绪，准备完成后将自动开始导航。 ");
+                DalamudApi.ChatGui.Print("[Beastmaster] vnavmesh の準備中です。準備完了後に自動でナビゲーションを開始します。");
                 return true;
             }
 
@@ -228,7 +232,7 @@ public sealed class BeastmasterNavigationService : IDisposable
                 lastMountAttemptUtc = DateTime.MinValue;
                 if (configuration.ShowNavigationLogs)
                 {
-                    DalamudApi.ChatGui.Print("[驯兽师助手] 正在上坐骑，成功后继续飞行导航。 ");
+                    DalamudApi.ChatGui.Print("[Beastmaster] マウントに騎乗中... 騎乗完了後にフライトナビゲーションを継続します。");
                 }
 
                 return true;
@@ -238,8 +242,8 @@ public sealed class BeastmasterNavigationService : IDisposable
             if (configuration.ShowNavigationLogs)
             {
                 DalamudApi.ChatGui.Print(started
-                    ? $"[驯兽师助手] 开始{(fly ? "飞行" : "步行")}导航到 {location.Zone} {location.NpcName}。"
-                    : $"[驯兽师助手] vnavmesh 未能开始前往 {location.NpcName}。 ");
+                    ? $"[Beastmaster] {location.Zone} {location.NpcName} への{(fly ? "フライト" : "地上")}ナビゲーションを開始しました。"
+                    : $"[Beastmaster] vnavmesh による {location.NpcName} への移動開始に失敗しました。");
             }
 
             return started;
@@ -247,7 +251,7 @@ public sealed class BeastmasterNavigationService : IDisposable
         catch (Exception ex)
         {
             DalamudApi.Log.Warning(ex, "Failed to navigate to Beastmaster catalog location.");
-            DalamudApi.ChatGui.Print($"[驯兽师助手] 导航失败：{ex.Message}");
+            DalamudApi.ChatGui.Print($"[Beastmaster] ナビゲーション失敗：{ex.Message}");
             return false;
         }
     }
@@ -256,7 +260,7 @@ public sealed class BeastmasterNavigationService : IDisposable
     {
         if (!IsLifestreamInstalled)
         {
-            DalamudApi.ChatGui.Print($"[驯兽师助手] 目标位于 {location.Zone}，Lifestream 未加载，请手动前往。 ");
+            DalamudApi.ChatGui.Print($"[Beastmaster] 目的地は {location.Zone} です。Lifestream がロードされていないため、手動で移動してください。");
             return false;
         }
 
@@ -265,7 +269,7 @@ public sealed class BeastmasterNavigationService : IDisposable
             .RowId;
         if (aetheryteId == 0)
         {
-            DalamudApi.ChatGui.Print($"[驯兽师助手] {location.Zone} 未找到可用以太水晶。 ");
+            DalamudApi.ChatGui.Print($"[Beastmaster] {location.Zone} のエーテライトが見つかりませんでした。");
             return false;
         }
 
@@ -273,20 +277,20 @@ public sealed class BeastmasterNavigationService : IDisposable
         {
             if (!teleport.InvokeFunc(aetheryteId, 0))
             {
-                DalamudApi.ChatGui.Print("[驯兽师助手] Lifestream 未开始传送。 ");
+                DalamudApi.ChatGui.Print("[Beastmaster] Lifestream によるテレポを開始できませんでした。");
                 return false;
             }
 
             pendingLocation = location;
             pendingLocationUseFieldNavigation = useFieldNavigation;
             pendingStartedUtc = DateTime.UtcNow;
-            DalamudApi.ChatGui.Print($"[驯兽师助手] 正在传送到 {location.Zone}，读图后将继续导航。 ");
+            DalamudApi.ChatGui.Print($"[Beastmaster] {location.Zone} へテレポ中... エリア移動後にナビゲーションを継続します。");
             return true;
         }
         catch (Exception ex)
         {
             DalamudApi.Log.Warning(ex, "Failed to teleport for Beastmaster catalog navigation.");
-            DalamudApi.ChatGui.Print($"[驯兽师助手] Lifestream 调用失败：{ex.Message}");
+            DalamudApi.ChatGui.Print($"[Beastmaster] Lifestream 呼び出し失敗：{ex.Message}");
             return false;
         }
     }
@@ -304,7 +308,7 @@ public sealed class BeastmasterNavigationService : IDisposable
         if (DateTime.UtcNow - pendingStartedUtc > TimeSpan.FromSeconds(45))
         {
             pendingLocation = null;
-            DalamudApi.ChatGui.Print("[驯兽师助手] 等待传送超时，已取消后续导航。 ");
+            DalamudApi.ChatGui.Print("[Beastmaster] テレポ待機がタイムアウトしたため、ナビゲーションをキャンセルしました。");
             return;
         }
 
@@ -402,7 +406,7 @@ public sealed class BeastmasterNavigationService : IDisposable
             pendingMountLocation = null;
             if (configuration.ShowNavigationLogs)
             {
-                DalamudApi.ChatGui.Print("[驯兽师助手] 无法上坐骑，改为步行导航。 ");
+                DalamudApi.ChatGui.Print("[Beastmaster] マウントに騎乗できないため、地上ナビゲーションに切り替えます。");
             }
 
             StartPathfind(location, false);
@@ -433,8 +437,8 @@ public sealed class BeastmasterNavigationService : IDisposable
             if (configuration.ShowNavigationLogs)
             {
                 DalamudApi.ChatGui.Print(started
-                    ? $"[驯兽师助手] 开始{(fly ? "飞行" : "步行")}导航到 {location.Zone} {location.NpcName}。"
-                    : $"[驯兽师助手] vnavmesh 未能开始前往 {location.NpcName}。 ");
+                    ? $"[Beastmaster] {location.Zone} {location.NpcName} への{(fly ? "フライト" : "地上")}ナビゲーションを開始しました。"
+                    : $"[Beastmaster] vnavmesh による {location.NpcName} への移動開始に失敗しました。");
             }
 
             return started;
@@ -442,7 +446,7 @@ public sealed class BeastmasterNavigationService : IDisposable
         catch (Exception ex)
         {
             DalamudApi.Log.Warning(ex, "Failed to start Beastmaster pathfinding.");
-            DalamudApi.ChatGui.Print($"[驯兽师助手] 导航失败：{ex.Message}");
+            DalamudApi.ChatGui.Print($"[Beastmaster] ナビゲーション失敗：{ex.Message}");
             return false;
         }
     }
