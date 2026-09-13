@@ -357,11 +357,6 @@ public sealed class PluginUI
 
     private void DrawMainShell()
     {
-        ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.4f, 0.4f, 1f));
-        ImGui.TextWrapped("【完全無料・有志日本語版】有料Discord・有料note・オンラインサロン等での紹介・転載・商用利用は禁止されています。有料コミュニティ等で案内された場合は規約違反・詐欺ですので返金を求めてください。");
-        ImGui.PopStyleColor();
-        ImGui.Separator();
-
         if (!ImGui.BeginTable(
                 "BeastmasterMainShell",
                 2,
