@@ -539,6 +539,15 @@ public sealed class PluginUI
         {
             configuration.SelectedMainSection = section.Key;
             configuration.Save();
+            if (section.Key == "arena-navigation")
+            {
+                navigationService.Navigate(new BeastmasterQuestLocation(
+                    148,
+                    4,
+                    new Vector3(24.238f, -6.003f, 65.809f),
+                    "黒衣森：中央森林",
+                    "闘獣塔"));
+            }
         }
 
         if (selected)
@@ -563,16 +572,6 @@ public sealed class PluginUI
         ImGui.TextDisabled("エリア：黒衣森：中央森林");
         ImGui.TextDisabled("Map.RowId: 4");
         ImGui.TextDisabled("ワールド座標：X=24.238, Y=-6.003, Z=65.809");
-        if (ImGui.Button("ナビゲーション開始##arena-navigation-start"))
-        {
-            navigationService.Navigate(new BeastmasterQuestLocation(
-                148,
-                4,
-                new Vector3(24.238f, -6.003f, 65.809f),
-                "黒衣森：中央森林",
-                "闘獣塔"));
-        }
-        ImGui.SameLine();
         ImGui.TextDisabled("vnavmesh が必要です（エリア間移動には Lifestream が必要）");
     }
 
@@ -1847,7 +1846,7 @@ public sealed class PluginUI
             configuration.OverlayThreeColumnMode);
         ImGui.Spacing();
         DrawAdvancedActionToggles();
-        ImGui.TextDisabled("優先順位：連携技2段目 → はなつ → 最後の一撃 → 鼓舞 → 声援 → 万象流転 → 連携技1段目 → とらえる → 基本コンボ");
+        ImGui.TextDisabled("優先順位：スキルシーケンス → 魔獣回復薬 → ルールモード → 連携技2段目 → はなつ → 最後の一撃 → 鼓舞 → 声援 → 万象流転 → 連携技1段目 → 安全シールド → とらえる → 基本コンボ");
 
         ImGui.Spacing();
         DrawSequenceSettings();
@@ -1927,7 +1926,7 @@ public sealed class PluginUI
                 DrawOverlayAdvancedToggle("はなつ", configuration.AutoReleaseEnabled, () => ToggleBoolean(nameof(configuration.AutoReleaseEnabled)), "はなつ・リキャスト毎", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("継続ひきつけ", IsArenaRuleEnabled(46751, 2413), () => ToggleArenaRule(46751, 2413), "継続ひきつけ", ref threeColumn, columnCount: 3, yellowWhenEnabled: true);
                 DrawOverlayAdvancedToggle("継続ちょうはつ", IsArenaRuleEnabled(46750, 5586), () => ToggleArenaRule(46750, 5586), "継続ちょうはつ", ref threeColumn, columnCount: 3, yellowWhenEnabled: true);
-                DrawOverlayAdvancedPlaceholder("未定", ref threeColumn, columnCount: 3);
+                DrawOverlayAdvancedToggle("安全シールド", configuration.AutoSafeShieldEnabled, () => ToggleBoolean(nameof(configuration.AutoSafeShieldEnabled)), "安全シールド：ターゲットとの距離が 3 yalms 以内で、シールドチャージが使用可能な場合に自動使用します。", ref threeColumn, columnCount: 3, yellowWhenEnabled: true);
                 return;
             }
 
@@ -1978,7 +1977,7 @@ public sealed class PluginUI
                     configuration.AutoWhistleEnabled = !configuration.AutoWhistleEnabled;
                     configuration.Save();
                 }, "使役獣がいない時、呼笛 1→2→3 の順で使用可能なものを自動召喚します。リクエスト後1秒待機して召喚を確認し、連続使用を防止します。", ref column);
-            DrawOverlayAdvancedPlaceholder("未定", ref column);
+            DrawOverlayAdvancedToggle("安全シールド", configuration.AutoSafeShieldEnabled, () => ToggleBoolean(nameof(configuration.AutoSafeShieldEnabled)), "安全シールド：ターゲットとの距離が 3 yalms 以内で、シールドチャージが使用可能な場合に自動使用します。", ref column, yellowWhenEnabled: true);
             DrawOverlayAdvancedToggle("はなつ", configuration.AutoReleaseEnabled,
                 () =>
                 {
@@ -2068,6 +2067,27 @@ public sealed class PluginUI
         DrawCompactSettingCheckbox("鼓舞", "鼓舞・リキャスト毎：獣心が0の時は通常判定、獣心が0より大きい時は万象流転（物理または魔法）有効時のみ判定。スキルシステム許可時に自動で鼓舞（44905）を使用します。", nameof(configuration.AutoDrumEnabled), configuration.AutoDrumEnabled);
         DrawCompactSettingCheckbox("声援", "声援・リキャスト毎：獣霊が0の時は通常判定、獣霊が0より大きい時は万象流転（物理または魔法）有効時のみ判定。スキルシステム許可時に自動で声援（44904）を使用します。", nameof(configuration.AutoCheerEnabled), configuration.AutoCheerEnabled);
 
+        var autoRecoveryItemEnabled = configuration.AutoRecoveryItemEnabled;
+        if (ImGui.Checkbox("低HP時に自動で魔獣回復薬を使用", ref autoRecoveryItemEnabled))
+        {
+            configuration.AutoRecoveryItemEnabled = autoRecoveryItemEnabled;
+            configuration.Save();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("闘獣塔での戦闘中のみ有効。自身のHPが閾値未満になった際、3級 → 2級 → 1級の優先度で魔獣回復薬を使用します（デフォルトOFF）。");
+        }
+        if (configuration.AutoRecoveryItemEnabled)
+        {
+            ImGui.SetNextItemWidth(70f);
+            var recoveryThreshold = configuration.AutoRecoveryItemHpThreshold;
+            if (ImGui.InputFloat("回復薬のHP閾値", ref recoveryThreshold, 0f, 0f, "%.0f%%"))
+            {
+                configuration.AutoRecoveryItemHpThreshold = Math.Clamp(recoveryThreshold, 1f, 100f);
+                configuration.Save();
+            }
+        }
+
         if (compactFinalStrike)
         {
             DrawCompactFinalStrikeToggle();
@@ -2138,6 +2158,8 @@ public sealed class PluginUI
             case nameof(configuration.AutoCheerEnabled): configuration.AutoCheerEnabled = !configuration.AutoCheerEnabled; break;
             case nameof(configuration.AutoWhistleEnabled): configuration.AutoWhistleEnabled = !configuration.AutoWhistleEnabled; break;
             case nameof(configuration.AutoReleaseEnabled): configuration.AutoReleaseEnabled = !configuration.AutoReleaseEnabled; break;
+            case nameof(configuration.AutoSafeShieldEnabled): configuration.AutoSafeShieldEnabled = !configuration.AutoSafeShieldEnabled; break;
+            case nameof(configuration.AutoRecoveryItemEnabled): configuration.AutoRecoveryItemEnabled = !configuration.AutoRecoveryItemEnabled; break;
         }
         configuration.Save();
     }
@@ -2588,6 +2610,9 @@ public sealed class PluginUI
                 case nameof(configuration.AutoCheerEnabled):
                     configuration.AutoCheerEnabled = value;
                     break;
+                case nameof(configuration.AutoSafeShieldEnabled):
+                    configuration.AutoSafeShieldEnabled = value;
+                    break;
                 case nameof(configuration.ShowGaugeInOverlay):
                     configuration.ShowGaugeInOverlay = value;
                     break;
@@ -2670,7 +2695,7 @@ public sealed class PluginUI
         DrawDebugActionRow(
             "##DebugProjectDataType",
             ref debugProjectDataType,
-            "魔獣を調教せし者\0現在の全クエスト状態\0魔獣使いクエスト一覧\0魔獣図鑑コンテンツID\0自動「とらえる」ID\0魔獣属性マップ\0魔獣図鑑クライアントデータ\0おすすめ装備アイテムID\0",
+            "魔獣を調教せし者\0現在の全クエスト状態\0魔獣使いクエスト一覧\0魔獣図鑑コンテンツID\0自動「とらえる」ID\0魔獣属性マップ\0魔獣図鑑クライアントデータ\0おすすめ装備アイテムID\0魔獣回復薬スキャン\0コンテンツ専用アイテムコンテナスキャン\0XBM画面スキャン\0XBMアイテム構造\0",
             "読み込み##DebugProjectData",
             RunDebugProjectData);
 
@@ -2735,6 +2760,10 @@ public sealed class PluginUI
             5 => debugDataService.FindBeastmasterAttributes(),
             6 => debugDataService.GetBeastmasterCatalogProbe(),
             7 => debugDataService.FindRecommendedEquipmentIds(),
+            8 => debugDataService.FindBeastmasterRecoveryItems(),
+            9 => debugDataService.FindContentInventoryContainers(),
+            10 => debugDataService.GetXbmAddonProbe(),
+            11 => debugDataService.GetXbmItemStructureProbe(),
             _ => "未知のプロジェクトデータ種別。",
         });
     }

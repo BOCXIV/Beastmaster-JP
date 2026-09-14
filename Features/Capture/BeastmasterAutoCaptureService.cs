@@ -14,6 +14,9 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
     private const uint BeastmasterReleaseBaseActionId = 44890;
     private const uint DrumActionId = 44905;
     private const uint CheerActionId = 44904;
+    private const uint SafeShieldActionId = 44893;
+    private const float SafeShieldRange = 3f;
+    private static readonly TimeSpan SafeShieldRequestCooldown = TimeSpan.FromSeconds(2);
     private const uint WhitePhysicalThirdFormActionId = 44931;
     private const uint PurplePhysicalThirdFormActionId = 44930;
     private const uint WhiteMagicalThirdFormActionId = 44933;
@@ -30,6 +33,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
     private readonly BeastmasterConfiguration configuration;
     private readonly BeastmasterSequenceService sequenceService;
     private readonly BeastmasterRuleService ruleService;
+    private readonly BeastmasterCrucibleItemService crucibleItemService = new();
     private readonly uint smashActionId;
     private readonly uint biteActionId;
     private readonly uint shieldActionId;
@@ -48,6 +52,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
     private DateTime pendingWhistleUntilUtc = DateTime.MinValue;
     private DateTime nextWhistleAttemptUtc = DateTime.MinValue;
     private DateTime nextFinalStrikeAttemptUtc = DateTime.MinValue;
+    private DateTime nextSafeShieldAttemptUtc = DateTime.MinValue;
     private DateTime resurrectionProtectionUntilUtc = DateTime.MinValue;
     private bool playerWasDead;
     private bool reportedMissingData;
@@ -92,6 +97,24 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         _ = actionId;
         lastSuccessfulActionUtc = DateTime.UtcNow;
         RecordBattleLog($"{actionName}（アクションID: {actionId}）を実行要求しました");
+    }
+
+    private void ReportCooperationDiagnostic(string message, string stateKey)
+    {
+        if (!configuration.AutoOutputDiagnosticsEnabled)
+        {
+            return;
+        }
+
+        var key = $"連携2段目|{stateKey}";
+        if (battleLogModuleStates.TryGetValue(key, out var previousState)
+            && previousState == stateKey)
+        {
+            return;
+        }
+
+        battleLogModuleStates[key] = stateKey;
+        RecordBattleLog($"連携2段目: {message}");
     }
 
     private void RecordBattleLog(string message)
@@ -182,9 +205,11 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             nextActionUtc = DateTime.MinValue;
             nextReleaseAttemptUtc = DateTime.MinValue;
             nextFinalStrikeAttemptUtc = DateTime.MinValue;
+            nextSafeShieldAttemptUtc = DateTime.MinValue;
             ResetCaptureState();
             ResetCooperationState();
             ResetAutoWhistle();
+            crucibleItemService.Reset();
             DalamudApi.ChatGui.Print("[Beastmaster] 自動戦闘を終了しました。");
         }
     }
@@ -237,9 +262,11 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             nextActionUtc = DateTime.MinValue;
             nextReleaseAttemptUtc = DateTime.MinValue;
             nextFinalStrikeAttemptUtc = DateTime.MinValue;
+            nextSafeShieldAttemptUtc = DateTime.MinValue;
             ResetCaptureState();
             ResetCooperationState();
             ResetAutoWhistle();
+            crucibleItemService.Reset();
         }
     }
 
@@ -344,6 +371,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             ResetCaptureState();
             ResetWhistleRotation("自動戦闘が無効");
             ResetAutoWhistle();
+            crucibleItemService.Reset();
             return;
         }
 
@@ -356,6 +384,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             ResetCaptureState();
             ResetCooperationState();
             ResetAutoWhistle();
+            crucibleItemService.Reset();
             return;
         }
 
@@ -437,9 +466,11 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             nextActionUtc = DateTime.MinValue;
             nextReleaseAttemptUtc = DateTime.MinValue;
             nextFinalStrikeAttemptUtc = DateTime.MinValue;
+            nextSafeShieldAttemptUtc = DateTime.MinValue;
             ResetCaptureState();
             ResetCooperationState();
             ResetAutoWhistle();
+            crucibleItemService.Reset();
         }
 
         if (now < resurrectionProtectionUntilUtc)
@@ -526,6 +557,23 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             StatusText = sequenceService.Status;
             NextActionName = "スキルシーケンス";
             NextActionReason = "スキルシーケンスがルールモードおよび通常ACRを制御中";
+            return;
+        }
+
+        var playerHpPercent = player.MaxHp == 0
+            ? 100f
+            : player.CurrentHp * 100f / player.MaxHp;
+        if (configuration.AutoRecoveryItemEnabled
+            && DalamudApi.Condition[ConditionFlag.InCombat]
+            && IsArenaTerritory(DalamudApi.ClientState.TerritoryType)
+            && playerHpPercent < configuration.AutoRecoveryItemHpThreshold
+            && crucibleItemService.TryUseBestRecoveryItem(player, now, out var recoveryItemId))
+        {
+            StatusText = "自動で回復薬を使用中...";
+            NextActionName = $"{recoveryItemId - 75}級魔獣回復薬";
+            NextActionReason = $"自身のHP {playerHpPercent:0.#}% が閾値 {configuration.AutoRecoveryItemHpThreshold:0.#}% 未満";
+            nextActionUtc = now.AddMilliseconds(700);
+            RecordBattleLog($"アクションをリクエストしました: {NextActionName}（XBMItem {recoveryItemId}）");
             return;
         }
 
@@ -636,7 +684,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             if (pendingCooperationStatusId != 0 && !HasSelfStatus(pendingCooperationStatusId))
             {
                 NextActionReason = $"自身への{GetAttributeStatusName(pendingCooperationStatusId)}（{pendingCooperationStatusId}）付与待ち";
-                ReportAutoOutputDiagnostic(NextActionName, NextActionReason, $"status-{pendingCooperationStatusId}");
+                ReportCooperationDiagnostic($"{GetAttributeStatusName(pendingCooperationStatusId)}の付与を待機中、{NextActionName}の準備", $"wait-{pendingCooperationStatusId}");
             }
             else
             {
@@ -658,12 +706,16 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
                 var cooperationUsed = TryUseAdvancedAction(actionManager, actionId, target.GameObjectId, cooperationStatus);
                 if (!cooperationUsed)
                 {
+                    ReportCooperationDiagnostic(
+                        $"{NextActionName}使用不可: ステータスコード {cooperationStatus}（待機ウィンドウ残り {(pendingCooperationUntilUtc - now).TotalSeconds:0.#} 秒）",
+                        $"status-{cooperationStatus}");
                     ReportAutoOutputDiagnostic(NextActionName,
                         $"スキルステータスコード {cooperationStatus}；技力 {gauge.Tp}/250、獣力 {gauge.BeastPower}/250",
                         $"status-{cooperationStatus}");
                 }
                 if (cooperationUsed)
                 {
+                    ReportCooperationDiagnostic($"連携2段目を完了: {NextActionName}", "completed");
                     ReportAutoOutputSuccess(NextActionName, actionId);
                     nextActionUtc = now.AddMilliseconds(700);
                     ResetCooperationState();
@@ -706,6 +758,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         }
 
         if ((configuration.BeastHeartCooperationEnabled || configuration.BeastSoulCooperationEnabled)
+            && pendingCooperationActionId == 0
             && TryGetCooperationAction(gauge, configuration.BeastHeartCooperationEnabled, out var cooperationActionId, out var cooperationFollowUpId, out var cooperationStatusId))
         {
             actionId = cooperationActionId;
@@ -743,6 +796,21 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
                 pendingCooperationUntilUtc = now.AddSeconds(7);
             }
 
+            return;
+        }
+
+        if (configuration.AutoSafeShieldEnabled
+            && now >= nextSafeShieldAttemptUtc
+            && BeastmasterActionHelper.IsPlayerInActionRange(
+                player,
+                target,
+                SafeShieldActionId,
+                out var shieldDistance,
+                out _)
+            && shieldDistance <= SafeShieldRange
+            && TryUseEnabledSelfAction(actionManager, SafeShieldActionId, "シールドチャージ", now, target.GameObjectId))
+        {
+            nextSafeShieldAttemptUtc = now.Add(SafeShieldRequestCooldown);
             return;
         }
 
@@ -881,6 +949,9 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         }
     }
 
+    private static bool IsArenaTerritory(uint territoryId)
+        => territoryId is >= 1339 and <= 1343;
+
     private void ResetCaptureState()
     {
         captureTargetId = 0;
@@ -892,9 +963,10 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         ActionManager* actionManager,
         uint actionId,
         string actionName,
-        DateTime now)
+        DateTime now,
+        ulong targetId = 0)
     {
-        var actionStatus = actionManager->GetActionStatus(ActionType.Action, actionId, 0);
+        var actionStatus = actionManager->GetActionStatus(ActionType.Action, actionId, targetId);
         if (actionStatus != 0)
         {
             ReportAutoOutputDiagnostic(actionName, $"スキルステータスコード {actionStatus}", $"status-{actionStatus}");
@@ -904,7 +976,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         StatusText = $"自動実行：{actionName}...";
         NextActionName = actionName;
         NextActionReason = "高度アクション準備完了";
-        if (!actionManager->UseAction(ActionType.Action, actionId, 0))
+        if (!actionManager->UseAction(ActionType.Action, actionId, targetId))
         {
             ReportAutoOutputDiagnostic(actionName, "UseAction が false を返しました", "use-action-false");
             return false;
@@ -993,6 +1065,21 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
                 Add("はなつ", status == 0 && inRange,
                     status != 0 ? $"コード {status}" : inRange ? "" : $"魔獣距離 {distance:0.#}/{range:0.#}");
             }
+        }
+
+        if (configuration.AutoSafeShieldEnabled)
+        {
+            var shieldStatus = actionManager->GetActionStatus(ActionType.Action, SafeShieldActionId, target.GameObjectId);
+            var shieldInRange = BeastmasterActionHelper.IsPlayerInActionRange(
+                player,
+                target,
+                SafeShieldActionId,
+                out var shieldDistance,
+                out _);
+            Add("安全シールド", shieldStatus == 0 && shieldInRange && shieldDistance <= SafeShieldRange,
+                shieldDistance > SafeShieldRange
+                    ? $"距離 {shieldDistance:0.#}/{SafeShieldRange:0.#}"
+                    : shieldStatus == 0 ? "" : $"コード {shieldStatus}");
         }
 
         if (configuration.AutoCaptureTryCapture)
