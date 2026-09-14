@@ -5,7 +5,9 @@ using System.Globalization;
 using System.Numerics;
 using System.Text;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using Dalamud.Game.NativeWrapper;
+using Dalamud.Game.Inventory;
 
 namespace Beastmaster;
 
@@ -467,6 +469,323 @@ public sealed class BeastmasterDebugDataService
             builder.AppendLine();
         }
 
+        return builder.ToString().TrimEnd();
+    }
+
+    public string FindBeastmasterRecoveryItems()
+    {
+        var items = DalamudApi.DataManager.GetExcelSheet<Item>();
+        var candidates = items
+            .Where(item => item.RowId != 0
+                && (item.Name.ExtractText().Contains("回復薬", StringComparison.Ordinal)
+                    || item.Name.ExtractText().Contains("魔獣", StringComparison.Ordinal)))
+            .OrderBy(item => item.RowId)
+            .ToArray();
+        var inventoryTypes = new[]
+        {
+            GameInventoryType.Inventory1,
+            GameInventoryType.Inventory2,
+            GameInventoryType.Inventory3,
+            GameInventoryType.Inventory4,
+        };
+        var counts = new Dictionary<uint, uint>();
+        foreach (var type in inventoryTypes)
+        {
+            foreach (var inventoryItem in DalamudApi.GameInventory.GetInventoryItems(type))
+            {
+                if (!inventoryItem.IsEmpty)
+                {
+                    counts[inventoryItem.BaseItemId] = counts.GetValueOrDefault(inventoryItem.BaseItemId) + (uint)inventoryItem.Quantity;
+                }
+            }
+        }
+
+        var builder = new StringBuilder()
+            .AppendLine("種別: 魔獣回復薬スキャン")
+            .AppendLine("魔獣回復薬 内部ID: 1級=76、2級=77、3級=78")
+            .AppendLine("スキャン対象コンテナ: Inventory1〜Inventory4")
+            .AppendLine();
+        if (candidates.Length == 0)
+        {
+            builder.AppendLine("アイテムテーブル内に「回復薬」または「魔獣」を含む候補アイテムが見つかりませんでした。");
+        }
+        else
+        {
+            foreach (var item in candidates)
+            {
+                builder.AppendLine($"ItemId={item.RowId} | {item.Name.ExtractText()} | 所持数={counts.GetValueOrDefault(item.RowId)}");
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    public unsafe string FindContentInventoryContainers()
+    {
+        var manager = ContentInventoryManager.Instance();
+        if (manager == null)
+        {
+            return "種別: コンテンツ専用アイテムコンテナスキャン\nContentInventoryManager が利用できません。";
+        }
+
+        var itemSheet = DalamudApi.DataManager.GetExcelSheet<Item>();
+        var candidates = Enumerable.Range(0, 10000)
+            .Select(value => (InventoryType)(uint)value)
+            .Concat(Enum.GetValues<InventoryType>())
+            .Distinct()
+            .OrderBy(value => (uint)value)
+            .ToArray();
+
+        var builder = new StringBuilder()
+            .AppendLine("種別: コンテンツ専用アイテムコンテナスキャン")
+            .AppendLine("モード: 読み取り専用（アイテム使用・メモリ書き込みなし）")
+            .AppendLine("目的: 闘獣塔アイテム等の ContentInventoryManager コンテナの探索")
+            .AppendLine($"TerritoryType: {DalamudApi.ClientState.TerritoryType}")
+            .AppendLine($"InCombat: {DalamudApi.Condition[ConditionFlag.InCombat]}")
+            .AppendLine();
+
+        var containerCount = 0;
+        var nonEmptySlotCount = 0;
+        foreach (var inventoryType in candidates)
+        {
+            if (!manager->HasInventoryContainer(inventoryType))
+            {
+                continue;
+            }
+
+            containerCount++;
+            var container = manager->GetInventoryContainer(inventoryType);
+            var typeValue = (uint)inventoryType;
+            var typeName = Enum.IsDefined(inventoryType) ? inventoryType.ToString() : $"Unknown{typeValue}";
+            if (container == null)
+            {
+                builder.AppendLine($"InventoryType={typeValue} ({typeName}) | コンテナポインタが null");
+                continue;
+            }
+
+            var size = Math.Clamp(container->Size, 0, 200);
+            builder.AppendLine($"InventoryType={typeValue} ({typeName}) | Loaded={container->IsLoaded} | Size={container->Size}");
+            for (short slot = 0; slot < size; slot++)
+            {
+                var item = manager->GetInventorySlot(inventoryType, slot);
+                if (item == null || item->ItemId == 0 || item->Quantity <= 0)
+                {
+                    continue;
+                }
+
+                nonEmptySlotCount++;
+                var itemName = itemSheet.TryGetRow(item->ItemId, out var row)
+                    ? row.Name.ExtractText()
+                    : string.Empty;
+                builder.AppendLine($"  Slot={slot} | ItemId={item->ItemId} | 数量={item->Quantity} | {itemName}");
+            }
+        }
+
+        if (containerCount == 0)
+        {
+            builder.AppendLine("現在参照可能な ContentInventoryManager コンテナが見つかりません。闘獣塔に入り、専用アイテム画面を開いた状態で再度実行してください。");
+        }
+
+        builder.AppendLine()
+            .AppendLine($"検出コンテナ数: {containerCount}")
+            .AppendLine($"非空スロット数: {nonEmptySlotCount}")
+            .AppendLine("ヒント: 回復薬の ItemId / 数量が含まれるスキャン結果をご報告ください。闘獣塔アイテムコンテナの確認に使用します。このスキャンではアイテムの使用可否は判定しません。");
+
+        return builder.ToString().TrimEnd();
+    }
+
+    public unsafe string GetXbmAddonProbe()
+    {
+        var builder = new StringBuilder()
+            .AppendLine("種別: XBM Agent / AddOn スキャン")
+            .AppendLine("モード: 読み取り専用（コールバック発火・アイテム使用・メモリ書き込みなし）")
+            .AppendLine("目的: 闘獣塔・魔獣使い画面内の専用アイテムデータの探索")
+            .AppendLine($"TerritoryType: {DalamudApi.ClientState.TerritoryType}")
+            .AppendLine($"InCombat: {DalamudApi.Condition[ConditionFlag.InCombat]}")
+            .AppendLine();
+
+        var agentModule = AgentModule.Instance();
+        builder.AppendLine("XBM Agents:");
+        foreach (var agent in XbmAgents())
+        {
+            try
+            {
+                var pointer = agentModule == null
+                    ? null
+                    : agentModule->GetAgentByInternalId((AgentId)agent.Id);
+                builder.AppendLine($"  AgentId={agent.Id} {agent.Name} | Address={(pointer == null ? "null" : $"0x{((nint)pointer).ToInt64():X}")}");
+            }
+            catch (Exception ex)
+            {
+                builder.AppendLine($"  AgentId={agent.Id} {agent.Name} | 読み取り失敗: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        builder.AppendLine()
+            .AppendLine("XBM AddOns:");
+        foreach (var addonName in XbmAddonNames())
+        {
+            DumpAddon(builder, addonName);
+            builder.AppendLine();
+        }
+
+        builder.AppendLine("アイテムアクション状態プローブ（読み取り専用）:");
+        var actionManager = ActionManager.Instance();
+        if (actionManager == null)
+        {
+            builder.AppendLine("  ActionManager が利用できません。");
+        }
+        else
+        {
+            foreach (var item in new[]
+            {
+                (Id: 76u, Name: "1級魔獣回復薬"),
+                (Id: 77u, Name: "2級魔獣回復薬"),
+                (Id: 78u, Name: "3級魔獣回復薬"),
+                (Id: 243136u, Name: "1級回復薬アイコン"),
+                (Id: 243137u, Name: "2級回復薬アイコン"),
+                (Id: 243138u, Name: "3級回復薬アイコン"),
+            })
+            {
+                var itemStatus = actionManager->GetActionStatus(ActionType.Item, item.Id, 0);
+                var actionStatus = actionManager->GetActionStatus(ActionType.Action, item.Id, 0);
+                builder.AppendLine($"  {item.Name} Id={item.Id} | ItemType状態={itemStatus} | ActionType状態={actionStatus}");
+            }
+        }
+
+        builder.AppendLine("ヒント: 闘獣アイテム画面を開いた状態で読み取ってください。AtkValue 内の ItemId、所持数、または回復薬名と推測される項目に注目してください。");
+        return builder.ToString().TrimEnd();
+    }
+
+    private static (uint Id, string Name)[] XbmAgents()
+        =>
+        [
+            (497, "XBMContentsMainHUD"),
+            (498, "XBMItemDetail"),
+            (499, "XBMBattleMonsterDetail"),
+            (500, "XBMMonsterNotebook"),
+            (501, "XBMPetParty"),
+            (502, "XBMStageDetailList"),
+            (503, "XBMStageList"),
+            (504, "XBMStageMap"),
+            (505, "XBMResult"),
+            (506, "XBMRanking"),
+        ];
+
+    private static string[] XbmAddonNames()
+        =>
+        [
+            "XBMContentsMainHUD",
+            "XBMItemDetail",
+            "XBMBattleMonsterDetail",
+            "XBMMonsterNotebook",
+            "XBMPetParty",
+            "XBMStageDetailList",
+            "XBMStageList",
+            "XBMStageMap",
+            "XBMResult",
+            "XBMRanking",
+        ];
+
+    private static void DumpAddon(StringBuilder builder, string addonName)
+    {
+        try
+        {
+            var addon = DalamudApi.GameGui.GetAddonByName(addonName);
+            builder.AppendLine($"Addon={addonName}");
+            if (addon.IsNull)
+            {
+                builder.AppendLine("  状態: 存在しません");
+                return;
+            }
+
+            builder.AppendLine($"  Address=0x{addon.Address.ToInt64():X}");
+            builder.AppendLine($"  Name={addon.Name}");
+            builder.AppendLine($"  Id={addon.Id} | ParentId={addon.ParentId} | HostId={addon.HostId}");
+            builder.AppendLine($"  Ready={addon.IsReady} | Visible={addon.IsVisible}");
+            builder.AppendLine($"  AtkValuesCount={addon.AtkValuesCount}");
+
+            if (!addon.IsReady)
+            {
+                return;
+            }
+
+            var index = 0;
+            foreach (var value in addon.AtkValues.Take(300))
+            {
+                string renderedValue;
+                try
+                {
+                    renderedValue = value.GetValue()?.ToString() ?? "<null>";
+                }
+                catch (Exception ex)
+                {
+                    renderedValue = $"<読み取り失敗: {ex.GetType().Name}>";
+                }
+
+                builder.AppendLine($"  Value[{index++}] Type={value.ValueType} Value={renderedValue}");
+            }
+
+            if (addon.AtkValuesCount > 300)
+            {
+                builder.AppendLine("  AtkValues が 300 件を超えているため、先頭 300 件のみ出力します。");
+            }
+        }
+        catch (Exception ex)
+        {
+            builder.AppendLine($"Addon={addonName}");
+            builder.AppendLine($"  読み取り失敗: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    public unsafe string GetXbmItemStructureProbe()
+    {
+        var builder = new StringBuilder()
+            .AppendLine("種別: XBM アイテム構造")
+            .AppendLine("モード: 読み取り専用（コールバック発火・アイテム使用・メモリ書き込みなし）")
+            .AppendLine("目的: XBMContentsMainHUD のアイテムフィールドを読み取り、回復薬の表示スロットを特定")
+            .AppendLine($"TerritoryType: {DalamudApi.ClientState.TerritoryType}")
+            .AppendLine($"InCombat: {DalamudApi.Condition[ConditionFlag.InCombat]}")
+            .AppendLine();
+
+        var addon = DalamudApi.GameGui.GetAddonByName("XBMContentsMainHUD", 1);
+        if (addon.IsNull || !addon.IsVisible)
+        {
+            builder.AppendLine("XBMContentsMainHUD が存在しないか非表示です。");
+            builder.AppendLine("ヒント: 先に闘獣塔に入り、専用アイテム画面を開いてください。");
+            return builder.ToString().TrimEnd();
+        }
+
+        builder.AppendLine($"XBMContentsMainHUD Address=0x{addon.Address.ToInt64():X}");
+        builder.AppendLine($"  IsReady={addon.IsReady} | IsVisible={addon.IsVisible}");
+        builder.AppendLine($"  AtkValuesCount={addon.AtkValuesCount}");
+        builder.AppendLine();
+
+        builder.AppendLine("AtkValues 完全リスト:");
+        var index = 0;
+        foreach (var value in addon.AtkValues)
+        {
+            string renderedValue;
+            try
+            {
+                renderedValue = value.GetValue()?.ToString() ?? "<null>";
+            }
+            catch (Exception ex)
+            {
+                renderedValue = $"<読み取り失敗: {ex.GetType().Name}>";
+            }
+            builder.AppendLine($"  Value[{index++}] Type={value.ValueType} Value={renderedValue}");
+            if (index >= 300) break;
+        }
+
+        if (addon.AtkValuesCount > 300)
+        {
+            builder.AppendLine("  AtkValues が 300 件を超えているため、先頭 300 件のみ出力します。");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("ヒント: 既知の回復薬グループ構造: Value[N+0]=Bool(存在) Value[N+1]=Bool(使用可能) Value[N+2]=UInt(iconId) Value[N+3]=UInt(itemId) Value[N+4]=String(name)");
+        builder.AppendLine("ヒント: 実際のアクション実行は RaptureHotbarModule.ExecuteSlot を介して行われ、FireCallback は使用しません。");
         return builder.ToString().TrimEnd();
     }
 
