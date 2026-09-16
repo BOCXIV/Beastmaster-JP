@@ -587,7 +587,7 @@ public sealed class BeastmasterDebugDataService
         var builder = new StringBuilder()
             .AppendLine("種別: 魔獣編成構造")
             .AppendLine("モード: 読み取り専用（コールバック発火・メンバー増減・メモリ書き込みなし）")
-            .AppendLine("目的: 現在の奇盤、編成人数、スロット容量、メンバー順序の認識")
+            .AppendLine("目的: 現在のパーティ編成、編成人数、スロット容量、メンバー順序の認識")
             .AppendLine($"TerritoryType: {DalamudApi.ClientState.TerritoryType}")
             .AppendLine();
 
@@ -649,7 +649,7 @@ public sealed class BeastmasterDebugDataService
         }
 
         builder.AppendLine()
-            .AppendLine("取得説明: 第1盤、第2盤、第3盤、高段第1盤、高段第2盤の編成画面でそれぞれ取得し、画面表示の容量を確認してください。");
+            .AppendLine("取得説明: 第一盤、第二盤、第三盤、特一盤、特二盤の編成画面でそれぞれ取得し、画面表示の容量を確認してください。");
         return builder.ToString().TrimEnd();
     }
 

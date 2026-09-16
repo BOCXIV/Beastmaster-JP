@@ -274,7 +274,7 @@ public sealed class PluginUI
             return;
         }
 
-        ImGui.Text("奇盤編成");
+        ImGui.Text("パーティ編成");
         ImGui.TextDisabled($"現在の編成 · {snapshot.MemberCount}/{snapshot.Capacity}");
         var presetNames = string.Join('\0', presets.Select(preset => preset.Name)) + '\0';
         ImGui.SetNextItemWidth(180f);
@@ -1974,7 +1974,7 @@ public sealed class PluginUI
             return;
         }
 
-        DrawBeastArenaTab("party", "奇盤編成", DrawPartyPresets);
+        DrawBeastArenaTab("party", "パーティ編成", DrawPartyPresets);
         DrawBeastArenaTab("achievements", "闘獣アチーブメント", DrawBeastArenaAchievements);
         DrawBeastArenaGuideTab();
         DrawBeastArenaTab("challenge-note", "攻略手帳", DrawBeastArenaChallengeNote);
@@ -2151,11 +2151,11 @@ public sealed class PluginUI
             return;
         }
 
-        DrawGuideFloor("第1盤", null);
-        DrawGuideFloor("第2盤", null);
-        DrawGuideFloor("第3盤", BeastmasterArenaGuide.Round3);
-        DrawGuideFloor("高段第1盤", null);
-        DrawGuideFloor("高段第2盤", null);
+        DrawGuideFloor("第一盤", null);
+        DrawGuideFloor("第二盤", null);
+        DrawGuideFloor("第三盤", BeastmasterArenaGuide.Round3);
+        DrawGuideFloor("特一盤", null);
+        DrawGuideFloor("特二盤", null);
 
         ImGui.EndTabBar();
     }
