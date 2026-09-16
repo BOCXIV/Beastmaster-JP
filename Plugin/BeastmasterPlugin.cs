@@ -13,6 +13,11 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
     private readonly BeastmasterCatalogChatTracker catalogChatTracker;
     private readonly BeastmasterAutoCaptureService autoCaptureService;
     private readonly BeastmasterCatalogSyncService catalogSyncService;
+    private readonly BeastmasterAchievementSyncService achievementSyncService;
+    private readonly BeastmasterResultProgressService resultProgressService;
+    private readonly BeastmasterNotebookProgressService notebookProgressService;
+    private readonly BeastmasterNotebookSyncService notebookSyncService;
+    private readonly BeastmasterPetPartyService petPartyService;
     private readonly BeastmasterCountdownService countdownService;
     private readonly BeastmasterSequenceService sequenceService;
     private readonly BeastmasterRuleService ruleService;
@@ -29,29 +34,40 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
             ?? new BeastmasterConfiguration();
         Configuration.Initialize(pluginInterface);
         var progressService = new BeastmasterProgressService(Configuration);
+        petPartyService = new BeastmasterPetPartyService();
+        petPartyService.Start();
+        notebookProgressService = new BeastmasterNotebookProgressService(progressService);
+        notebookProgressService.Start();
+        notebookSyncService = new BeastmasterNotebookSyncService(progressService);
+        notebookSyncService.Start();
+        resultProgressService = new BeastmasterResultProgressService(progressService);
+        resultProgressService.Start();
         catalogSyncService = new BeastmasterCatalogSyncService(progressService);
         catalogSyncService.Start();
+        achievementSyncService = new BeastmasterAchievementSyncService(progressService);
+        achievementSyncService.Start();
         var questService = new BeastmasterQuestService();
         countdownService = new BeastmasterCountdownService(Configuration);
         sequenceService = new BeastmasterSequenceService(Configuration, countdownService);
-        ruleService = new BeastmasterRuleService(Configuration);
+        var crucibleItemService = new BeastmasterCrucibleItemService();
+        ruleService = new BeastmasterRuleService(Configuration, crucibleItemService);
         var debugDataService = new BeastmasterDebugDataService(countdownService);
         navigationService = new BeastmasterNavigationService(pluginInterface, Configuration);
         catalogChatTracker = new BeastmasterCatalogChatTracker(Configuration, progressService);
         autoCaptureService = new BeastmasterAutoCaptureService(Configuration, sequenceService, ruleService);
-        ui = new PluginUI(Configuration, progressService, questService, navigationService, debugDataService, autoCaptureService, catalogSyncService, sequenceService, ruleService);
+        ui = new PluginUI(Configuration, progressService, questService, navigationService, debugDataService, autoCaptureService, catalogSyncService, achievementSyncService, notebookSyncService, sequenceService, ruleService, petPartyService);
 
         DalamudApi.Commands.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Beastmasterを開きます。サブコマンド：出力、一時停止、再開、停止。",
+            HelpMessage = "Beastmasterを開きます。サブコマンド：出力、一時停止、再開、停止、カウントダウン [秒数]、カウントダウン中止。",
         });
         DalamudApi.Commands.AddHandler(ChineseCommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Beastmasterを開きます。サブコマンド：出力、一時停止、再開、停止。",
+            HelpMessage = "Beastmasterを開きます。サブコマンド：出力、一時停止、再開、停止、カウントダウン [秒数]、カウントダウン中止。",
         });
         DalamudApi.Commands.AddHandler(JapaneseCommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Beastmasterを開きます。サブコマンド：出力、一時停止、再開、停止。",
+            HelpMessage = "Beastmasterを開きます。サブコマンド：出力、一時停止、再開、停止、カウントダウン [秒数]、カウントダウン中止。",
         });
 
         pluginInterface.UiBuilder.Draw += ui.Draw;
@@ -73,13 +89,58 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
         autoCaptureService.Dispose();
         countdownService.Dispose();
         catalogSyncService.Dispose();
+        achievementSyncService.Dispose();
+        resultProgressService.Dispose();
+        notebookProgressService.Dispose();
+        notebookSyncService.Dispose();
+        petPartyService.Dispose();
         navigationService.Dispose();
         Configuration.Save();
     }
 
     private void OnCommand(string command, string args)
     {
-        switch (args.Trim())
+        var trimmed = args.Trim();
+
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            ui.OpenMainWindow();
+            return;
+        }
+
+        if (trimmed.StartsWith("カウントダウン", StringComparison.Ordinal)
+            || trimmed.StartsWith("倒计时", StringComparison.Ordinal)
+            || trimmed.StartsWith("countdown", StringComparison.OrdinalIgnoreCase))
+        {
+            var prefixLength = trimmed.StartsWith("カウントダウン", StringComparison.Ordinal) ? 7
+                : trimmed.StartsWith("倒计时", StringComparison.Ordinal) ? 3
+                : 9;
+            var remainder = trimmed.Length > prefixLength ? trimmed[prefixLength..].Trim() : string.Empty;
+            if (string.IsNullOrEmpty(remainder))
+            {
+                countdownService.StartCustomCountdown(10f);
+            }
+            else if (float.TryParse(remainder, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+            {
+                countdownService.StartCustomCountdown(seconds);
+            }
+            else
+            {
+                DalamudApi.ChatGui.Print("[Beastmaster] 使用法：/魔獣使い カウントダウン [秒数]（デフォルト 10 秒）");
+            }
+
+            return;
+        }
+
+        if (trimmed.StartsWith("カウントダウン中止", StringComparison.Ordinal)
+            || trimmed.StartsWith("取消倒计时", StringComparison.Ordinal)
+            || trimmed.StartsWith("cancelcountdown", StringComparison.OrdinalIgnoreCase))
+        {
+            countdownService.CancelCustomCountdown();
+            return;
+        }
+
+        switch (trimmed)
         {
             case "出力":
             case "输出":
@@ -99,13 +160,11 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
 
                 return;
             case "一時停止":
-            case "暂停":
             case "pause":
                 autoCaptureService.SetPaused(true);
                 DalamudApi.ChatGui.Print("[Beastmaster] 自動出力を一時停止しました。/魔獣使い 再開 で復帰できます。");
                 return;
             case "再開":
-            case "恢复":
             case "resume":
                 if (!autoCaptureService.IsEnabled)
                 {
@@ -117,7 +176,6 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
                 DalamudApi.ChatGui.Print("[Beastmaster] 自動出力を再開しました。");
                 return;
             case "停止":
-            case "关闭":
             case "off":
                 autoCaptureService.SetEnabled(false);
                 DalamudApi.ChatGui.Print("[Beastmaster] 自動出力を停止しました。");

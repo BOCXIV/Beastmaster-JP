@@ -12,12 +12,14 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
     [NonSerialized]
     private DateTime lastSaveFailureUtc = DateTime.MinValue;
 
-    public int Version { get; set; } = 27;
+    public int Version { get; set; } = 36;
     public string SelectedStageKey { get; set; } = string.Empty;
     public string SelectedMainSection { get; set; } = "quests";
     public bool HideCompletedQuests { get; set; }
     public bool SortCatalogByLocation { get; set; }
     public bool SortCatalogByLevel { get; set; }
+    public bool SortCatalogByBeastLevel { get; set; }
+    public bool SortCatalogByBeastLevelDescending { get; set; }
     public bool HideCapturedBeasts { get; set; }
     public bool AutoCompleteCatalogFromChat { get; set; } = true;
     public bool UseFlightNavigation { get; set; } = true;
@@ -44,6 +46,8 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
     public bool AutoDrumEnabled { get; set; }
     public bool AutoCheerEnabled { get; set; }
     public bool AutoSafeShieldEnabled { get; set; }
+    public bool AutoBorrowEnabled { get; set; }
+    public bool AutoBeastSkillEnabled { get; set; }
     public bool AutoRecoveryItemEnabled { get; set; }
     public float AutoRecoveryItemHpThreshold { get; set; } = 30f;
     public bool WhistleRotationEnabled { get; set; }
@@ -67,6 +71,9 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
     public int SelectedRuleSetIndex { get; set; }
     public int SelectedRuleIndex { get; set; }
     public List<BeastmasterRuleSetDefinition> RuleSets { get; set; } = [];
+    public int SelectedPartyPresetIndex { get; set; }
+    public string SelectedArenaTab { get; set; } = "party";
+    public List<BeastmasterPartyPreset> PartyPresets { get; set; } = [];
     public Dictionary<string, BeastmasterCharacterProgress> ProgressByCharacter { get; set; }
         = new(StringComparer.Ordinal);
 
@@ -74,8 +81,15 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
     {
         this.pluginInterface = pluginInterface;
         ProgressByCharacter ??= new Dictionary<string, BeastmasterCharacterProgress>(StringComparer.Ordinal);
+        foreach (var progress in ProgressByCharacter.Values)
+        {
+            progress.CompletedObjectives ??= new HashSet<string>(StringComparer.Ordinal);
+            progress.BeastProgress ??= [];
+            progress.CompletedAchievements ??= [];
+        }
         Sequences ??= [];
         RuleSets ??= [];
+        PartyPresets ??= [];
         if (Sequences.Count == 0)
         {
             Sequences.Add(BeastmasterSequenceDefinition.CreateWaterOpener());
@@ -176,7 +190,7 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
 
         if (Version < 17)
         {
-            if (!Sequences.Any(sequence => sequence.Name is "テストシーケンス" or "测试序列"))
+            if (!Sequences.Any(sequence => sequence.Name == "テストシーケンス"))
             {
                 Sequences.Add(BeastmasterSequenceDefinition.CreateTestSequence());
             }
@@ -279,6 +293,105 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
             Version = 27;
             Save();
         }
+
+        if (Version < 28)
+        {
+            foreach (var rs in RuleSets)
+                foreach (var r in rs.Rules)
+                {
+                    if (r.ActionType == 0) r.ActionType = BeastmasterRuleActionType.Skill;
+                }
+            Version = 28;
+            Save();
+        }
+
+        if (Version < 29)
+        {
+            foreach (var rs in RuleSets)
+                foreach (var rule in rs.Rules)
+                    if (rule.ActionType == BeastmasterRuleActionType.CrucibleItem
+                        && rule.CrucibleItemId == 128)
+                        rule.CrucibleItemType = BeastmasterCrucibleItemType.Fang;
+            Version = 29;
+            Save();
+        }
+
+        if (Version < 30)
+        {
+            var defaultRuleSet = RuleSets.FirstOrDefault(ruleSet => ruleSet.Name == "デフォルトルールセット");
+            if (defaultRuleSet != null && !defaultRuleSet.Rules.Any(rule => rule.Name == "最終バースト-1層"))
+            {
+                defaultRuleSet.Rules.Add(new BeastmasterRuleDefinition
+                {
+                    Name = "最終バースト-1層",
+                    Enabled = true,
+                    ConditionType = BeastmasterRuleConditionType.TargetDataId,
+                    DataId = 19344,
+                    ActionType = BeastmasterRuleActionType.CrucibleItem,
+                    CrucibleItemType = BeastmasterCrucibleItemType.Fang,
+                });
+            }
+
+            Version = 30;
+            Save();
+        }
+
+        if (Version < 31)
+        {
+            foreach (var progress in ProgressByCharacter.Values)
+            {
+                progress.BeastProgress ??= [];
+            }
+            Version = 31;
+            Save();
+        }
+
+        if (Version < 32)
+        {
+            PartyPresets ??= [];
+            Version = 32;
+            Save();
+        }
+
+        if (Version < 33)
+        {
+            SortCatalogByBeastLevel = false;
+            SortCatalogByBeastLevelDescending = false;
+            Version = 33;
+            Save();
+        }
+
+        if (Version < 34)
+        {
+            SelectedArenaTab = "party";
+            Version = 34;
+            Save();
+        }
+
+        if (Version < 35)
+        {
+            foreach (var progress in ProgressByCharacter.Values)
+            {
+                progress.CompletedAchievements ??= [];
+            }
+            Version = 35;
+            Save();
+        }
+
+        if (Version < 36)
+        {
+            AutoBorrowEnabled = false;
+            AutoBeastSkillEnabled = false;
+            Version = 36;
+            Save();
+        }
+
+        if (PartyPresets.Count == 0)
+        {
+            PartyPresets.Add(new BeastmasterPartyPreset());
+            Save();
+        }
+        SelectedPartyPresetIndex = Math.Clamp(SelectedPartyPresetIndex, 0, PartyPresets.Count - 1);
 
         if (RuleSets.Count == 0)
         {

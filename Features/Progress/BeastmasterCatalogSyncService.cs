@@ -110,6 +110,7 @@ public sealed unsafe class BeastmasterCatalogSyncService
 
                 var changed = progressService.ReplaceCatalogProgress(unlocked);
                 Stop($"同期完了：登録済み {unlocked.Count}/{BeastmasterCatalog.Entries.Count} 体、更新 {changed} 件。", clearStates: false);
+                DalamudApi.ChatGui.Print($"[魔獣使いアシスト] 登録済み魔獣の同期が完了しました：登録済み {unlocked.Count}/{BeastmasterCatalog.Entries.Count} 体、更新 {changed} 件。");
                 return;
             }
 
@@ -175,6 +176,7 @@ public sealed unsafe class BeastmasterCatalogSyncService
         {
             Diagnostic = ex.Message;
             Stop($"同期失敗（進捗は変更されませんでした）：{ex.Message}", clearStates: true);
+            DalamudApi.ChatGui.Print($"[魔獣使いアシスト] 登録済み魔獣の同期に失敗しました：{ex.Message}");
         }
     }
 

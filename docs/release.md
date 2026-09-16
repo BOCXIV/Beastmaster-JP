@@ -1,38 +1,38 @@
-# 发布流程
+# リリース手順
 
-## 开发参考
+## 開発リファレンス
 
-卫月官方 Dalamud API 文档：
+Dalamud 公式 API ドキュメント：
 
 ```text
 https://dalamud.dev/api/
 ```
 
-用于核对 Dalamud 插件服务、客户端 API、接口签名和版本兼容性。开发中优先以当前国服 SDK 和该文档为准，不能仅依据旧项目代码或猜测的结构实现功能。
+Dalamud プラグインサービス、クライアント API、インターフェース署名、およびバージョンの互換性の確認用です。開発時は現在の最新 SDK と公式ドキュメントを最優先とし、旧プロジェクトのコードや推測に基づく実装は避けてください。
 
-## 首次发布准备
+## 初回リリース準備
 
-项目创建为公开 GitHub 仓库并推送 `main` 后，自定义插件仓库地址为：
+公開 GitHub リポジトリを作成し `main` へプッシュした後、カスタムプラグインリポジトリの URL は以下のようになります：
 
 ```text
-https://raw.githubusercontent.com/anmili2022/Beastmaster/main/repo.json
+https://raw.githubusercontent.com/BOCXIV/Beastmaster-JP/main/repo.json
 ```
 
-首个版本已经预设为 `0.1.0.0`。首次推送源码后，从干净且与 `origin/main` 同步的 `main` 分支执行：
+初期バージョンは `0.1.0.0` に設定されています。初回ソースコードをプッシュ後、クリーンかつ `origin/main` と同期された `main` ブランチから以下を実行します：
 
 ```powershell
 .\scripts\release.ps1 0.1.0.0
 ```
 
-## 后续发布
+## 通常リリース
 
-版本格式为 `主.次.修订.构建`，tag 不使用 `v` 前缀。每次发布选择一个尚未使用的新版本，例如：
+バージョン形式は `メジャー.マイナー.リビジョン.ビルド` とし、タグには `v` プレフィックスを付けません。リリースごとに未使用の新しいバージョンを指定します。例：
 
 ```powershell
-.\scripts\release.ps1 0.1.1.0
+.\scripts\release.ps1 0.1.29.0
 ```
 
-脚本会检查分支与远端状态，更新 `Beastmaster.csproj`、`Beastmaster.json` 和 `repo.json`，执行 Release 构建，提交并推送版本，然后创建 tag。GitHub Actions 会打包以下文件并创建 Release：
+スクリプトはブランチとリモートの状態を検査し、`Beastmaster.csproj`、`Beastmaster.json`、および `repo.json` を更新して Release ビルドを実行し、コミット・プッシュしてタグを作成します。GitHub Actions が以下のファイルをパッケージングして Release を作成します：
 
 ```text
 Beastmaster.dll
@@ -40,21 +40,21 @@ Beastmaster.json
 Beastmaster.deps.json
 ```
 
-只预览版本文件变化：
+バージョンファイルの変更プレビューのみを行う場合：
 
 ```powershell
-.\scripts\release.ps1 0.1.1.0 -DryRun
+.\scripts\release.ps1 0.1.29.0 -DryRun
 ```
 
-推送 tag 后不等待 CI：
+タグプッシュ後に CI 完了を待機しない場合：
 
 ```powershell
-.\scripts\release.ps1 0.1.1.0 -NoWait
+.\scripts\release.ps1 0.1.29.0 -NoWait
 ```
 
-## 发布后检查
+## リリース後チェック
 
-1. GitHub Release 中存在 `Beastmaster.zip`。
-2. zip 内只有 DLL、插件清单和 deps 文件。
-3. `repo.json` 的版本和三个下载链接指向本次 Release。
-4. 在 Dalamud 中添加自定义仓库地址，验证安装、图标、启动和更新。
+1. GitHub Release に `Beastmaster.zip` が存在すること。
+2. zip 内に DLL、プラグインマニフェスト、deps ファイルのみが含まれていること。
+3. `repo.json` のバージョンおよびダウンロードリンクが今回の Release を正しく指していること。
+4. Dalamud のカスタムリポジトリ設定に登録し、インストール・アイコン・起動・更新が正常に機能することを検証すること。

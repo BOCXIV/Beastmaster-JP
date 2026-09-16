@@ -10,6 +10,19 @@ public enum BeastmasterRuleConditionType
     DataIdStatus,
     DataIdCast,
     TargetCast,
+    TargetDataId,
+}
+
+public enum BeastmasterRuleActionType
+{
+    Skill,
+    CrucibleItem,
+}
+
+public enum BeastmasterCrucibleItemType
+{
+    Recovery,
+    Fang,
 }
 
 public enum BeastmasterRuleStatusCondition
@@ -39,9 +52,12 @@ public sealed class BeastmasterRuleDefinition
     public string Name { get; set; } = "新規ルール";
     public BeastmasterRuleConditionType ConditionType { get; set; }
     public BeastmasterRuleStatusCondition StatusCondition { get; set; } = BeastmasterRuleStatusCondition.Missing;
+    public BeastmasterRuleActionType ActionType { get; set; } = BeastmasterRuleActionType.Skill;
+    public BeastmasterCrucibleItemType CrucibleItemType { get; set; } = BeastmasterCrucibleItemType.Recovery;
     public uint DataId { get; set; }
     public uint ConditionId { get; set; }
     public uint ActionId { get; set; } = 44879;
+    public uint CrucibleItemId { get; set; }
 
     public bool TryValidate(out string error)
     {
@@ -58,7 +74,7 @@ public sealed class BeastmasterRuleDefinition
             return false;
         }
 
-        if (ConditionId == 0)
+        if (ConditionType != BeastmasterRuleConditionType.TargetDataId && ConditionId == 0)
         {
             error = IsStatusRule ? "バフIDは 0 より大きい必要があります。" : "詠唱IDは 0 より大きい必要があります。";
             return false;
@@ -70,7 +86,7 @@ public sealed class BeastmasterRuleDefinition
             return false;
         }
 
-        if (!BeastmasterRuleActions.IsSupported(ActionId))
+        if (ActionType == BeastmasterRuleActionType.Skill && !BeastmasterRuleActions.IsSupported(ActionId))
         {
             error = $"未対応のルールアクションです（{ActionId}）。";
             return false;
@@ -86,7 +102,11 @@ public sealed class BeastmasterRuleDefinition
 
     public bool RequiresDataId
         => ConditionType is BeastmasterRuleConditionType.DataIdStatus
-            or BeastmasterRuleConditionType.DataIdCast;
+            or BeastmasterRuleConditionType.DataIdCast
+            or BeastmasterRuleConditionType.TargetDataId;
+
+    public bool IsTargetDataIdRule
+        => ConditionType is BeastmasterRuleConditionType.TargetDataId;
 }
 
 [Serializable]
@@ -131,6 +151,15 @@ public sealed class BeastmasterRuleSetDefinition
                     StatusCondition = BeastmasterRuleStatusCondition.Missing,
                     ConditionId = 5586,
                     ActionId = 46750,
+                },
+                new()
+                {
+                    Name = "最終バースト-1層",
+                    Enabled = true,
+                    ConditionType = BeastmasterRuleConditionType.TargetDataId,
+                    DataId = 19344,
+                    ActionType = BeastmasterRuleActionType.CrucibleItem,
+                    CrucibleItemType = BeastmasterCrucibleItemType.Fang,
                 },
             ],
         };
@@ -204,9 +233,12 @@ public sealed class BeastmasterRuleSetDefinition
                 .AppendLine($"有効|{rule.Enabled}")
                 .AppendLine($"判定|{rule.ConditionType}")
                 .AppendLine($"条件|{rule.StatusCondition}")
+                .AppendLine($"実行|{rule.ActionType}")
+                .AppendLine($"クルーシブルアイテム種別|{rule.CrucibleItemType}")
                 .AppendLine($"DataId|{rule.DataId}")
                 .AppendLine($"判定ID|{rule.ConditionId}")
-                .AppendLine($"アクション|{rule.ActionId}");
+                .AppendLine($"アクション|{rule.ActionId}")
+                .AppendLine($"クルーシブルアイテム|{rule.CrucibleItemId}");
         }
 
         return builder.ToString().TrimEnd();
@@ -264,12 +296,12 @@ public sealed class BeastmasterRuleSetDefinition
         {
             switch (key)
             {
-                case "名前" or "名称": ruleSet.Name = value; return true;
-                case "説明" or "说明": ruleSet.Description = value; return true;
-                case "有効" or "启用" when bool.TryParse(value, out var enabled): ruleSet.Enabled = enabled; return true;
-                case "エリアモード" or "区域模式" when Enum.TryParse<BeastmasterRuleAreaMode>(value, out var areaMode): ruleSet.AreaMode = areaMode; return true;
-                case "診断" or "诊断" when Enum.TryParse<BeastmasterRuleDiagnosticMode>(value, out var diagnostic): ruleSet.DiagnosticMode = diagnostic; return true;
-                case "エリア" or "区域":
+                case "名前": ruleSet.Name = value; return true;
+                case "説明": ruleSet.Description = value; return true;
+                case "有効" when bool.TryParse(value, out var enabled): ruleSet.Enabled = enabled; return true;
+                case "エリアモード" when Enum.TryParse<BeastmasterRuleAreaMode>(value, out var areaMode): ruleSet.AreaMode = areaMode; return true;
+                case "診断" when Enum.TryParse<BeastmasterRuleDiagnosticMode>(value, out var diagnostic): ruleSet.DiagnosticMode = diagnostic; return true;
+                case "エリア":
                     if (value.Length == 0) return true;
                     foreach (var item in value.Split(','))
                     {
@@ -283,13 +315,16 @@ public sealed class BeastmasterRuleSetDefinition
 
         switch (key)
         {
-            case "名前" or "名称": rule.Name = value; return true;
-            case "有効" or "启用" when bool.TryParse(value, out var enabled): rule.Enabled = enabled; return true;
-            case "判定" or "检测" when Enum.TryParse<BeastmasterRuleConditionType>(value, out var condition): rule.ConditionType = condition; return true;
+            case "名前": rule.Name = value; return true;
+            case "有効" when bool.TryParse(value, out var enabled): rule.Enabled = enabled; return true;
+            case "判定" when Enum.TryParse<BeastmasterRuleConditionType>(value, out var condition): rule.ConditionType = condition; return true;
             case "条件" when Enum.TryParse<BeastmasterRuleStatusCondition>(value, out var status): rule.StatusCondition = status; return true;
+            case "実行" when Enum.TryParse<BeastmasterRuleActionType>(value, out var actionType): rule.ActionType = actionType; return true;
+            case "クルーシブルアイテム種別" when Enum.TryParse<BeastmasterCrucibleItemType>(value, out var itemType): rule.CrucibleItemType = itemType; return true;
             case "DataId" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var dataId): rule.DataId = dataId; return true;
-            case "判定ID" or "检测ID" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var conditionId): rule.ConditionId = conditionId; return true;
-            case "アクション" or "技能" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var actionId): rule.ActionId = actionId; return true;
+            case "判定ID" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var conditionId): rule.ConditionId = conditionId; return true;
+            case "アクション" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var actionId): rule.ActionId = actionId; return true;
+            case "クルーシブルアイテム" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var itemId): rule.CrucibleItemId = itemId; return true;
             default: return false;
         }
     }
@@ -330,39 +365,39 @@ public static class BeastmasterRuleActions
 
         return actionId switch
         {
-            44879 => "砕き割り",
+            44879 => "スマッシュ",
             44880 => "とらえる",
-            44881 => "一号呼笛",
-            44883 => "噛み砕き",
-            44884 => "山崩斧",
-            44885 => "裂盾斧",
+            44881 => "一号呼び笛",
+            44883 => "アクスバイト",
+            44884 => "アバランチアクス",
+            44885 => "シールドスプリッター",
             44886 => "魔獣技",
-            44887 => "寒風斧",
-            44888 => "回旋斧",
-            44889 => "風嘯斧",
+            44887 => "ミストラルアクス",
+            44888 => "スピニングアクス",
+            44889 => "ラファールアクス",
             44890 => "はなつ",
             44891 => "最後の一撃",
-            44892 => "二号呼笛",
+            44892 => "二号呼び笛",
             44893 => "シールドチャージ",
-            44894 => "三号呼笛",
+            44894 => "三号呼び笛",
             44895 => "かりる",
-            44896 => "百獣の皮",
-            44897 => "百虫の皮",
-            44898 => "有翼飛掠",
-            44899 => "草木播種",
-            44900 => "水棲波",
-            44901 => "甲鱗の皮",
-            44902 => "呪具砕魂",
-            44903 => "死屍浄化",
-            44904 => "声援",
-            44905 => "鼓舞",
-            44930 => "狂猛怒火",
-            44931 => "利鷹堅爪",
-            44932 => "昇魔暴落",
-            44933 => "災禍天翔",
+            44896 => "ビーストスキン",
+            44897 => "ヴァイルスキン",
+            44898 => "クラウドスキム",
+            44899 => "シードサワー",
+            44900 => "クェリングウェーブ",
+            44901 => "スケイルスキン",
+            44902 => "ソウルクラッシュ",
+            44903 => "アッシュクレンズ",
+            44904 => "おうえん",
+            44905 => "きあい",
+            44930 => "ブルータルレイジ",
+            44931 => "ホークスパイク",
+            44932 => "ライジングフォール",
+            44933 => "カラミティ",
             46750 => "ちょうはつ",
             46751 => "ひきつけろ",
-            47093 => "獣心技",
+            47093 => "おおわざ",
             _ => $"アクション {actionId}",
         };
     }
@@ -379,4 +414,34 @@ public static class BeastmasterRuleActions
     public static bool RequiresTarget(uint actionId)
         => actionId is 44879 or 44880 or 44883 or 44884 or 44885 or 44887 or 44888 or 44889
             or 44890 or 44891 or 44893 or 44930 or 44931 or 44932 or 44933 or 47093;
+
+    public static bool IsCrucibleItemId(uint itemId)
+        => itemId is >= 76 and <= 143;
+
+    public static bool IsCrucibleItemFriendly(uint itemId)
+        => itemId is 76 or 77 or 78;
+
+    public static string GetCrucibleItemTypeName(BeastmasterCrucibleItemType itemType)
+        => itemType == BeastmasterCrucibleItemType.Recovery ? "魔獣回復薬" : "各種牙";
+
+    public static string GetCrucibleItemName(uint itemId)
+        => itemId switch
+        {
+            76 => "1級魔獣回復薬",
+            77 => "2級魔獣回復薬",
+            78 => "3級魔獣回復薬",
+            128 => "火の牙",
+            129 => "氷の牙",
+            131 => "雷の牙",
+            133 => "風の牙",
+            138 => "時の砂",
+            _ => $"クルーシブルアイテム {itemId}",
+        };
+
+    public static readonly uint[] KnownCrucibleItemIds =
+    [
+        76, 77, 78,
+        128, 129, 131, 133,
+        138,
+    ];
 }

@@ -15,7 +15,6 @@ public enum BeastmasterAttribute
     堅,
     魔,
     翔,
-    坚 = 堅,
 }
 
 public sealed record BeastmasterCatalogEntry(

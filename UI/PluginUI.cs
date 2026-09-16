@@ -12,6 +12,7 @@ public sealed class PluginUI
     [
         ("quests", "ジョブクエスト"),
         ("catalog", "魔獣図鑑"),
+        ("party", "闘獣練"),
         ("equipment", "おすすめ装備"),
         ("combinations", "おすすめ編成"),
         ("sequences", "スキルシーケンス"),
@@ -31,20 +32,20 @@ public sealed class PluginUI
         (44893, "シールドチャージ"),
         (44890, "はなつ"),
         (44891, "最後の一撃"),
-        (44881, "一号呼笛"),
-        (44892, "二号呼笛"),
-        (44894, "三号呼笛"),
+        (44881, "一号呼び笛"),
+        (44892, "二号呼び笛"),
+        (44894, "三号呼び笛"),
         (44895, "かりる"),
-        (44896, "百獣の皮"),
-        (44897, "百虫の皮"),
-        (44898, "有翼飛掠"),
-        (44899, "草木播種"),
-        (44900, "水棲波"),
-        (44901, "甲鱗の皮"),
-        (44902, "呪具砕魂"),
-        (44903, "死屍浄化"),
-        (44904, "声援"),
-        (44905, "鼓舞"),
+        (44896, "ビーストスキン"),
+        (44897, "ヴァイルスキン"),
+        (44898, "クラウドスキム"),
+        (44899, "シードサワー"),
+        (44900, "クェリングウェーブ"),
+        (44901, "スケイルスキン"),
+        (44902, "ソウルクラッシュ"),
+        (44903, "アッシュクレンズ"),
+        (44904, "おうえん"),
+        (44905, "きあい"),
     ];
 
     private readonly BeastmasterConfiguration configuration;
@@ -54,8 +55,11 @@ public sealed class PluginUI
     private readonly BeastmasterDebugDataService debugDataService;
     private readonly BeastmasterAutoCaptureService autoCaptureService;
     private readonly BeastmasterCatalogSyncService catalogSyncService;
+    private readonly BeastmasterAchievementSyncService achievementSyncService;
+    private readonly BeastmasterNotebookSyncService notebookSyncService;
     private readonly BeastmasterSequenceService sequenceService;
     private readonly BeastmasterRuleService ruleService;
+    private readonly BeastmasterPetPartyService petPartyService;
     private string debugQuery = "魔獣";
     private string debugActionId = "44890";
     private string debugResult = "ボタンをクリックしてデータを読み込みます。";
@@ -74,6 +78,8 @@ public sealed class PluginUI
     private bool isMainWindowOpen;
     private int newRuleTerritoryId;
     private string ruleImportStatus = string.Empty;
+    private string partyPresetStatus = string.Empty;
+    private bool arenaTabSelectionInitialized;
 
     public PluginUI(
         BeastmasterConfiguration configuration,
@@ -83,8 +89,11 @@ public sealed class PluginUI
         BeastmasterDebugDataService debugDataService,
         BeastmasterAutoCaptureService autoCaptureService,
         BeastmasterCatalogSyncService catalogSyncService,
+        BeastmasterAchievementSyncService achievementSyncService,
+        BeastmasterNotebookSyncService notebookSyncService,
         BeastmasterSequenceService sequenceService,
-        BeastmasterRuleService ruleService)
+        BeastmasterRuleService ruleService,
+        BeastmasterPetPartyService petPartyService)
     {
         this.configuration = configuration;
         this.progressService = progressService;
@@ -93,8 +102,11 @@ public sealed class PluginUI
         this.debugDataService = debugDataService;
         this.autoCaptureService = autoCaptureService;
         this.catalogSyncService = catalogSyncService;
+        this.achievementSyncService = achievementSyncService;
+        this.notebookSyncService = notebookSyncService;
         this.sequenceService = sequenceService;
         this.ruleService = ruleService;
+        this.petPartyService = petPartyService;
     }
 
     public void OpenMainWindow()
@@ -106,6 +118,7 @@ public sealed class PluginUI
     {
         RefreshGaugeSnapshot();
         DrawAutoCaptureOverlay();
+        DrawPetPartyOverlay();
         if (!isMainWindowOpen)
         {
             return;
@@ -229,6 +242,70 @@ public sealed class PluginUI
         }
 
         ImGui.End();
+    }
+
+    private void DrawPetPartyOverlay()
+    {
+        var snapshot = petPartyService.Snapshot;
+        if (!snapshot.Available)
+        {
+            return;
+        }
+
+        var presets = configuration.PartyPresets;
+        if (presets.Count == 0)
+        {
+            return;
+        }
+
+        var selectedIndex = Math.Clamp(configuration.SelectedPartyPresetIndex, 0, presets.Count - 1);
+        var selected = presets[selectedIndex];
+        ImGui.SetNextWindowPos(new Vector2(280f, 180f), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowBgAlpha(0.92f);
+        if (!ImGui.Begin("##BeastmasterPartyOverlay",
+                ImGuiWindowFlags.NoTitleBar
+                | ImGuiWindowFlags.AlwaysAutoResize
+                | ImGuiWindowFlags.NoScrollbar
+                | ImGuiWindowFlags.NoScrollWithMouse
+                | ImGuiWindowFlags.NoFocusOnAppearing
+                | ImGuiWindowFlags.NoNav))
+        {
+            ImGui.End();
+            return;
+        }
+
+        ImGui.Text("奇盤編成");
+        ImGui.TextDisabled($"現在の編成 · {snapshot.MemberCount}/{snapshot.Capacity}");
+        var presetNames = string.Join('\0', presets.Select(preset => preset.Name)) + '\0';
+        ImGui.SetNextItemWidth(180f);
+        if (ImGui.Combo("##party-overlay-preset", ref selectedIndex, presetNames))
+        {
+            configuration.SelectedPartyPresetIndex = selectedIndex;
+            configuration.Save();
+            selected = presets[selectedIndex];
+        }
+        ImGui.SameLine();
+        ImGui.BeginDisabled(petPartyService.IsApplying || !CanApplyPartyPreset(selected));
+        PushPartyApplyButtonStyle();
+        if (ImGui.Button(petPartyService.IsApplying ? "適用中..." : "適用"))
+        {
+            petPartyService.TryApply(selected);
+        }
+        ImGui.PopStyleColor(3);
+        ImGui.EndDisabled();
+        if (!string.IsNullOrWhiteSpace(petPartyService.ApplyStatus))
+        {
+            ImGui.TextWrapped(petPartyService.ApplyStatus);
+        }
+
+        ImGui.End();
+    }
+
+    private static void PushPartyApplyButtonStyle()
+    {
+        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.67f, 0.52f, 0.27f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.78f, 0.63f, 0.36f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.58f, 0.43f, 0.21f, 1f));
     }
 
     private void DrawAutoOutputHeader()
@@ -509,10 +586,11 @@ public sealed class PluginUI
         DrawSidebarButton(MainSections[5]);
         DrawSidebarButton(MainSections[6]);
         DrawSidebarButton(MainSections[7]);
+        DrawSidebarButton(MainSections[8]);
 
         ImGui.Separator();
         DrawSidebarLabel("ツール");
-        DrawSidebarButton(MainSections[8]);
+        DrawSidebarButton(MainSections[9]);
 
         if (ImGui.Button("フィードバック・要望", new Vector2(ImGui.GetContentRegionAvail().X, 30f)))
         {
@@ -523,16 +601,33 @@ public sealed class PluginUI
             });
         }
 
-        DrawSidebarButton(MainSections[9]);
         DrawSidebarButton(MainSections[10]);
+        DrawSidebarButton(MainSections[11]);
     }
 
     private void DrawSidebarButton((string Key, string Label) section)
     {
         var selected = configuration.SelectedMainSection == section.Key;
+        var hasSectionColor = section.Key is "catalog" or "party";
+        if (hasSectionColor)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Button, section.Key == "catalog"
+                ? new Vector4(0.42f, 0.30f, 0.10f, 1f)
+                : new Vector4(0.42f, 0.22f, 0.14f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, section.Key == "catalog"
+                ? new Vector4(0.58f, 0.42f, 0.14f, 1f)
+                : new Vector4(0.58f, 0.30f, 0.20f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, section.Key == "catalog"
+                ? new Vector4(0.65f, 0.48f, 0.18f, 1f)
+                : new Vector4(0.66f, 0.35f, 0.24f, 1f));
+        }
         if (selected)
         {
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.12f, 0.23f, 0.25f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.Button, section.Key == "catalog"
+                ? new Vector4(0.62f, 0.44f, 0.12f, 1f)
+                : section.Key == "party"
+                    ? new Vector4(0.64f, 0.32f, 0.20f, 1f)
+                    : new Vector4(0.12f, 0.23f, 0.25f, 1f));
         }
 
         if (ImGui.Button($"{section.Label}##section-{section.Key}", new Vector2(ImGui.GetContentRegionAvail().X, 34f)))
@@ -553,6 +648,10 @@ public sealed class PluginUI
         if (selected)
         {
             ImGui.PopStyleColor();
+        }
+        if (hasSectionColor)
+        {
+            ImGui.PopStyleColor(3);
         }
     }
 
@@ -584,6 +683,9 @@ public sealed class PluginUI
                 break;
             case "catalog":
                 DrawCatalog();
+                break;
+            case "party":
+                DrawBeastArena();
                 break;
             case "equipment":
                 DrawEquipment();
@@ -1120,7 +1222,7 @@ public sealed class PluginUI
 
         var conditionType = (int)rule.ConditionType;
         ImGui.SetNextItemWidth(190f);
-        if (ImGui.Combo("判定種別", ref conditionType, "自身のバフ\0対象のバフ\0DataIDのバフ\0DataIDの詠唱\0対象の詠唱\0"))
+        if (ImGui.Combo("判定種別", ref conditionType, "自身のバフ\0対象のバフ\0DataIDのバフ\0DataIDの詠唱\0対象の詠唱\0対象のDataID\0"))
         {
             rule.ConditionType = (BeastmasterRuleConditionType)conditionType;
             configuration.Save();
@@ -1146,22 +1248,46 @@ public sealed class PluginUI
             }
         }
         var conditionId = (int)Math.Min(rule.ConditionId, int.MaxValue);
-        ImGui.SetNextItemWidth(190f);
-        if (ImGui.InputInt(rule.IsStatusRule ? "バフID" : "詠唱アクションID", ref conditionId, 1, 100))
+        if (!rule.IsTargetDataIdRule)
         {
-            rule.ConditionId = (uint)Math.Max(0, conditionId);
+            ImGui.SetNextItemWidth(190f);
+            if (ImGui.InputInt(rule.IsStatusRule ? "バフID" : "詠唱アクションID", ref conditionId, 1, 100))
+            {
+                rule.ConditionId = (uint)Math.Max(0, conditionId);
+                configuration.Save();
+            }
+        }
+
+        var actionType = (int)rule.ActionType;
+        ImGui.SetNextItemWidth(120f);
+        if (ImGui.Combo("実行方式", ref actionType, "アクション\0クルーシブルアイテム\0"))
+        {
+            rule.ActionType = (BeastmasterRuleActionType)actionType;
             configuration.Save();
         }
 
-        var supportedActions = BeastmasterRuleActions.Supported;
-        var actionIndex = Array.FindIndex(supportedActions, action => action.ActionId == rule.ActionId);
-        if (actionIndex < 0) actionIndex = 0;
-        var actionNames = string.Join('\0', supportedActions.Select(action => $"{action.Name} ({action.ActionId})")) + '\0';
-        ImGui.SetNextItemWidth(260f);
-        if (ImGui.Combo("実行アクション", ref actionIndex, actionNames))
+        if (rule.ActionType == BeastmasterRuleActionType.CrucibleItem)
         {
-            rule.ActionId = supportedActions[actionIndex].ActionId;
-            configuration.Save();
+            var itemType = (int)rule.CrucibleItemType;
+            ImGui.SetNextItemWidth(190f);
+            if (ImGui.Combo("クルーシブルアイテム", ref itemType, "魔獣回復薬（3→2→1優先）\0各種牙\0"))
+            {
+                rule.CrucibleItemType = (BeastmasterCrucibleItemType)itemType;
+                configuration.Save();
+            }
+        }
+        else
+        {
+            var supportedActions = BeastmasterRuleActions.Supported;
+            var actionIndex = Array.FindIndex(supportedActions, action => action.ActionId == rule.ActionId);
+            if (actionIndex < 0) actionIndex = 0;
+            var actionNames = string.Join('\0', supportedActions.Select(action => $"{action.Name} ({action.ActionId})")) + '\0';
+            ImGui.SetNextItemWidth(260f);
+            if (ImGui.Combo("実行アクション", ref actionIndex, actionNames))
+            {
+                rule.ActionId = supportedActions[actionIndex].ActionId;
+                configuration.Save();
+            }
         }
 
         if (!rule.TryValidate(out var error)) ImGui.TextColored(new Vector4(1f, 0.4f, 0.3f, 1f), error);
@@ -1177,7 +1303,10 @@ public sealed class PluginUI
             StatusCondition = source.StatusCondition,
             DataId = source.DataId,
             ConditionId = source.ConditionId,
+            ActionType = source.ActionType,
             ActionId = source.ActionId,
+            CrucibleItemType = source.CrucibleItemType,
+            CrucibleItemId = source.CrucibleItemId,
         };
 
     private static string GetRuleSummary(BeastmasterRuleDefinition rule)
@@ -1189,11 +1318,16 @@ public sealed class PluginUI
             BeastmasterRuleConditionType.DataIdStatus => $"DataID {rule.DataId}",
             BeastmasterRuleConditionType.DataIdCast => $"DataID {rule.DataId}",
             BeastmasterRuleConditionType.TargetCast => "対象",
+            BeastmasterRuleConditionType.TargetDataId => $"対象DataID {rule.DataId}",
             _ => "未知",
         };
         var condition = rule.IsStatusRule
             ? $"{(rule.StatusCondition == BeastmasterRuleStatusCondition.Present ? "付与中" : "未付与")} バフ {rule.ConditionId}"
-            : $"詠唱 {rule.ConditionId}";
+            : rule.IsTargetDataIdRule
+                ? ""
+                : $"詠唱 {rule.ConditionId}";
+        if (rule.ActionType == BeastmasterRuleActionType.CrucibleItem)
+            return $"{actor}{condition} -> アイテム {BeastmasterRuleActions.GetCrucibleItemTypeName(rule.CrucibleItemType)}";
         var actionName = BeastmasterRuleActions.GetActionName(rule.ActionId);
         return $"{actor}{condition} -> {actionName}";
     }
@@ -1397,7 +1531,7 @@ public sealed class PluginUI
             ImGui.TableNextColumn();
             ImGui.Text(equipment.Slot);
             ImGui.TableNextColumn();
-            if (equipment.Name == "装備なし" || equipment.Name == "无装备")
+            if (equipment.Name == "装備なし")
             {
                 ImGui.TextDisabled(equipment.Name);
             }
@@ -1440,7 +1574,7 @@ public sealed class PluginUI
 
     private void DrawEquipmentOwnership(BeastmasterEquipmentEntry equipment)
     {
-        if (equipment.Name == "装備なし" || equipment.Name == "无装备")
+        if (equipment.Name == "装備なし")
         {
             ImGui.TextDisabled("-");
             return;
@@ -1480,7 +1614,7 @@ public sealed class PluginUI
         var selectedEntries = selectedEquipmentSet == 0
             ? BeastmasterEquipmentGuide.Level50Starter
             : BeastmasterEquipmentGuide.Level50BestInSlot;
-        foreach (var equipment in selectedEntries.Where(item => item.Name != "装備なし" && item.Name != "无装备"))
+        foreach (var equipment in selectedEntries.Where(item => item.Name != "装備なし"))
         {
             if (equipment.ItemId == 0)
             {
@@ -1525,18 +1659,18 @@ public sealed class PluginUI
 
     private static IEnumerable<GameInventoryType> ArmoryTypes(string slot)
     {
-        if (slot == "主武器" || slot == "主手") yield return GameInventoryType.ArmoryMainHand;
-        else if (slot == "盾" || slot == "副手") yield return GameInventoryType.ArmoryOffHand;
-        else if (slot == "頭防具" || slot == "头部") yield return GameInventoryType.ArmoryHead;
-        else if (slot == "胴防具" || slot == "身体") yield return GameInventoryType.ArmoryBody;
-        else if (slot == "手防具" || slot == "手部") yield return GameInventoryType.ArmoryHands;
-        else if (slot == "脚防具" || slot == "腿部") yield return GameInventoryType.ArmoryLegs;
-        else if (slot == "足防具" || slot == "脚部") yield return GameInventoryType.ArmoryFeets;
-        else if (slot == "耳飾り" || slot == "耳饰") yield return GameInventoryType.ArmoryEar;
-        else if (slot == "首飾り" || slot == "项链") yield return GameInventoryType.ArmoryNeck;
-        else if (slot == "腕輪" || slot == "手镯") yield return GameInventoryType.ArmoryWrist;
-        else if (slot.StartsWith("指輪", StringComparison.Ordinal) || slot.StartsWith("戒指", StringComparison.Ordinal)) yield return GameInventoryType.ArmoryRings;
-        else if (slot == "証" || slot == "职业证") yield return GameInventoryType.ArmorySoulCrystal;
+        if (slot == "主武器") yield return GameInventoryType.ArmoryMainHand;
+        else if (slot == "盾") yield return GameInventoryType.ArmoryOffHand;
+        else if (slot == "頭防具") yield return GameInventoryType.ArmoryHead;
+        else if (slot == "胴防具") yield return GameInventoryType.ArmoryBody;
+        else if (slot == "手防具") yield return GameInventoryType.ArmoryHands;
+        else if (slot == "脚防具") yield return GameInventoryType.ArmoryLegs;
+        else if (slot == "足防具") yield return GameInventoryType.ArmoryFeets;
+        else if (slot == "耳飾り") yield return GameInventoryType.ArmoryEar;
+        else if (slot == "首飾り") yield return GameInventoryType.ArmoryNeck;
+        else if (slot == "腕輪") yield return GameInventoryType.ArmoryWrist;
+        else if (slot.StartsWith("指輪", StringComparison.Ordinal)) yield return GameInventoryType.ArmoryRings;
+        else if (slot == "証") yield return GameInventoryType.ArmorySoulCrystal;
     }
 
     private static void DrawGameCommandButton(string label, string command)
@@ -1572,26 +1706,65 @@ public sealed class PluginUI
             navigationService.Stop();
         }
 
-        ImGui.TextDisabled("「とらえる」成功時に自動記録されます。手動でチェックを切り替えることも可能です。");
-        if (ImGui.Button("魔獣図鑑の解放状況を同期"))
+        ImGui.TextDisabled("同期説明 (?)");
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("「とらえる」成功時に自動記録されます。手動で達成状況を切り替えることも可能です。\nリザルト同期：各ラウンド終了時に参戦魔獣の情報を自動更新します。\n魔獣図鑑：NPC「ラウダ」と会話して魔獣図鑑を開いた後、「魔獣レベル経験値同期」を押すと全魔獣を自動巡回します。\nLv25：カンスト魔獣の経験値は --/-- と表示され、未同期データは -- と表示されます。");
+        }
+
+        var entries = BeastmasterCatalog.Entries;
+        var catalogCompletedCount = entries.Count(entry => progressService.IsCompleted(entry.Key));
+
+        if (ImGui.Button("解放済み魔獣を同期"))
         {
             catalogSyncService.RequestSync();
         }
-
+        ImGui.SameLine();
+        ImGui.TextDisabled($"{catalogCompletedCount}/{entries.Count}");
+        if (catalogSyncService.IsScanning || !string.IsNullOrWhiteSpace(catalogSyncService.Diagnostic))
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled(catalogSyncService.Status);
+        }
         if (!string.IsNullOrWhiteSpace(catalogSyncService.Diagnostic))
         {
             ImGui.SameLine();
-            if (ImGui.Button("同期診断ログをコピー"))
+            if (ImGui.Button("図鑑診断ログをコピー"))
             {
                 ImGui.SetClipboardText(catalogSyncService.Diagnostic);
             }
         }
 
         ImGui.SameLine();
-        ImGui.TextDisabled(catalogSyncService.Status);
+        if (ImGui.Button("魔獣レベル経験値同期"))
+        {
+            notebookSyncService.RequestSync();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("先にNPC「ラウダ」と会話して魔獣図鑑を開いてから同期をクリックしてください。");
+        }
+        if (notebookSyncService.IsScanning)
+        {
+            ImGui.SameLine();
+            ImGui.ProgressBar(
+                (float)notebookSyncService.ProgressCount / notebookSyncService.TotalCount,
+                new Vector2(120f, 0f),
+                $"{notebookSyncService.ProgressCount}/{notebookSyncService.TotalCount}");
+        }
+        if (!string.IsNullOrWhiteSpace(notebookSyncService.Diagnostic))
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled(notebookSyncService.Status);
+            ImGui.SameLine();
+            if (ImGui.Button("レベル診断ログをコピー"))
+            {
+                ImGui.SetClipboardText(notebookSyncService.Diagnostic);
+            }
+        }
+
         ImGui.Separator();
 
-        var entries = BeastmasterCatalog.Entries;
         var sortByLocation = configuration.SortCatalogByLocation;
         var hideCaptured = configuration.HideCapturedBeasts;
         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.82f, 0.25f, 1f));
@@ -1602,10 +1775,29 @@ public sealed class PluginUI
         }
         ImGui.SameLine();
         var sortByLevel = configuration.SortCatalogByLevel;
-        if (ImGui.Checkbox("レベル順で並び替え", ref sortByLevel))
+        if (ImGui.Checkbox("捕獲レベル順で並び替え", ref sortByLevel))
         {
             configuration.SortCatalogByLevel = sortByLevel;
+            if (sortByLevel) configuration.SortCatalogByBeastLevel = false;
             configuration.Save();
+        }
+        ImGui.SameLine();
+        var sortByBeastLevel = configuration.SortCatalogByBeastLevel;
+        if (ImGui.Checkbox("獣レベル順で並び替え", ref sortByBeastLevel))
+        {
+            configuration.SortCatalogByBeastLevel = sortByBeastLevel;
+            if (sortByBeastLevel) configuration.SortCatalogByLevel = false;
+            configuration.Save();
+        }
+        if (configuration.SortCatalogByBeastLevel)
+        {
+            ImGui.SameLine();
+            var descending = configuration.SortCatalogByBeastLevelDescending;
+            if (ImGui.Checkbox("獣レベル降順", ref descending))
+            {
+                configuration.SortCatalogByBeastLevelDescending = descending;
+                configuration.Save();
+            }
         }
         ImGui.SameLine();
         if (ImGui.Checkbox("仲間にした魔獣を非表示", ref hideCaptured))
@@ -1626,14 +1818,12 @@ public sealed class PluginUI
             .TryGetRow(currentTerritory, out var currentTerritoryRow)
             ? currentTerritoryRow.Map.RowId
             : (ushort)0;
-        var completedCount = entries.Count(entry => progressService.IsCompleted(entry.Key));
-        ImGui.ProgressBar((float)completedCount / entries.Count, new Vector2(-1f, 0f), $"{completedCount}/{entries.Count}");
 
         ImGui.Spacing();
 
         if (!ImGui.BeginTable(
                 "BeastmasterCatalogTable",
-                8,
+                10,
                 ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY | ImGuiTableFlags.SizingStretchProp,
                 new Vector2(0f, 0f)))
         {
@@ -1644,7 +1834,9 @@ public sealed class PluginUI
         ImGui.TableSetupColumn("No. / 魔獣名", ImGuiTableColumnFlags.WidthFixed, 150f);
         ImGui.TableSetupColumn("属性", ImGuiTableColumnFlags.WidthFixed, 48f);
         ImGui.TableSetupColumn("アクション", ImGuiTableColumnFlags.WidthFixed, 118f);
-        ImGui.TableSetupColumn("Lv", ImGuiTableColumnFlags.WidthFixed, 50f);
+        ImGui.TableSetupColumn("捕獲Lv", ImGuiTableColumnFlags.WidthFixed, 66f);
+        ImGui.TableSetupColumn("獣Lv", ImGuiTableColumnFlags.WidthFixed, 42f);
+        ImGui.TableSetupColumn("経験値", ImGuiTableColumnFlags.WidthFixed, 62f);
         ImGui.TableSetupColumn("エリア / コンテンツ", ImGuiTableColumnFlags.WidthStretch);
         ImGui.TableSetupColumn("座標", ImGuiTableColumnFlags.WidthFixed, 112f);
         ImGui.TableSetupColumn("ナビ", ImGuiTableColumnFlags.WidthFixed, 62f);
@@ -1654,12 +1846,15 @@ public sealed class PluginUI
         IEnumerable<BeastmasterCatalogEntry> sortedEntries;
         if (configuration.SortCatalogByLocation)
         {
-            sortedEntries = displayedEntries
+            var ordered = displayedEntries
                 .OrderBy(entry => !(entry.TerritoryType == currentTerritory
                     && (entry.MapRowId == 0 || entry.MapRowId == currentMapRowId)))
-                .ThenBy(entry => entry.Location, StringComparer.Ordinal)
-                .ThenBy(entry => configuration.SortCatalogByLevel ? GetCatalogMinimumLevel(entry.Level) : int.MaxValue)
-                .ThenBy(entry => entry.Number);
+                .ThenBy(entry => entry.Location, StringComparer.Ordinal);
+            sortedEntries = ApplyCatalogLevelSort(ordered);
+        }
+        else if (configuration.SortCatalogByBeastLevel)
+        {
+            sortedEntries = ApplyCatalogBeastLevelSort(displayedEntries);
         }
         else if (configuration.SortCatalogByLevel)
         {
@@ -1707,6 +1902,19 @@ public sealed class PluginUI
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(entry.Level);
             ImGui.TableNextColumn();
+            var beastProgress = progressService.GetBeastProgress(entry.Number);
+            ImGui.TextUnformatted(beastProgress?.Level.ToString() ?? "--");
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(beastProgress == null
+                ? "--/--"
+                : beastProgress.Level >= 25
+                    ? "--/--"
+                    : $"{beastProgress.Experience}/{beastProgress.ExperienceRequired}");
+            if (beastProgress != null && ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip($"最終同期：{beastProgress.UpdatedUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+            }
+            ImGui.TableNextColumn();
             ImGui.TextUnformatted(entry.Location);
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(GetCatalogCoordinate(entry));
@@ -1730,6 +1938,575 @@ public sealed class PluginUI
         ImGui.EndTable();
     }
 
+    private IEnumerable<BeastmasterCatalogEntry> ApplyCatalogLevelSort(IOrderedEnumerable<BeastmasterCatalogEntry> ordered)
+    {
+        if (configuration.SortCatalogByBeastLevel)
+        {
+            var withKnownFirst = ordered.ThenBy(entry => progressService.GetBeastProgress(entry.Number) == null);
+            return configuration.SortCatalogByBeastLevelDescending
+                ? withKnownFirst.ThenByDescending(entry => progressService.GetBeastProgress(entry.Number)?.Level ?? 0)
+                    .ThenBy(entry => entry.Number)
+                : withKnownFirst.ThenBy(entry => progressService.GetBeastProgress(entry.Number)?.Level ?? int.MaxValue)
+                    .ThenBy(entry => entry.Number);
+        }
+
+        return configuration.SortCatalogByLevel
+            ? ordered.ThenBy(entry => GetCatalogMinimumLevel(entry.Level)).ThenBy(entry => entry.Number)
+            : ordered.ThenBy(entry => entry.Number);
+    }
+
+    private IEnumerable<BeastmasterCatalogEntry> ApplyCatalogBeastLevelSort(IEnumerable<BeastmasterCatalogEntry> entries)
+    {
+        var knownFirst = entries.OrderBy(entry => progressService.GetBeastProgress(entry.Number) == null);
+        return configuration.SortCatalogByBeastLevelDescending
+            ? knownFirst.ThenByDescending(entry => progressService.GetBeastProgress(entry.Number)?.Level ?? 0)
+                .ThenBy(entry => entry.Number)
+            : knownFirst.ThenBy(entry => progressService.GetBeastProgress(entry.Number)?.Level ?? int.MaxValue)
+                .ThenBy(entry => entry.Number);
+    }
+
+    private void DrawBeastArena()
+    {
+        ImGui.Text("闘獣練");
+        ImGui.Separator();
+        if (!ImGui.BeginTabBar("BeastArenaTabs"))
+        {
+            return;
+        }
+
+        DrawBeastArenaTab("party", "奇盤編成", DrawPartyPresets);
+        DrawBeastArenaTab("achievements", "闘獣アチーブメント", DrawBeastArenaAchievements);
+        DrawBeastArenaGuideTab();
+        DrawBeastArenaTab("challenge-note", "攻略手帳", DrawBeastArenaChallengeNote);
+        ImGui.EndTabBar();
+        arenaTabSelectionInitialized = true;
+    }
+
+    private void DrawBeastArenaGuideTab()
+    {
+        DrawBeastArenaTab("guide", "闘獣攻略", DrawBeastArenaGuide);
+    }
+
+    private void DrawBeastArenaTab(string key, string label, System.Action draw)
+    {
+        var flags = !arenaTabSelectionInitialized && configuration.SelectedArenaTab == key
+            ? ImGuiTabItemFlags.SetSelected
+            : ImGuiTabItemFlags.None;
+        if (!ImGui.BeginTabItem(label, flags))
+        {
+            return;
+        }
+
+        if (configuration.SelectedArenaTab != key)
+        {
+            configuration.SelectedArenaTab = key;
+            configuration.Save();
+        }
+
+        draw();
+        ImGui.EndTabItem();
+    }
+
+    private void DrawBeastArenaAchievements()
+    {
+        ImGui.Spacing();
+        ImGui.Text("闘獣アチーブメント");
+        ImGui.SameLine();
+        ImGui.TextDisabled("キャラクター単位で保存されます。同期をクリックすると現在の達成状況を読み込みます。");
+        ImGui.Spacing();
+
+        if (ImGui.Button("現在のアチーブメント状況を同期"))
+        {
+            achievementSyncService.RequestSync();
+        }
+
+        if (!string.IsNullOrWhiteSpace(achievementSyncService.Diagnostic))
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("同期診断ログをコピー"))
+            {
+                ImGui.SetClipboardText(achievementSyncService.Diagnostic);
+            }
+        }
+
+        ImGui.SameLine();
+        ImGui.TextDisabled(achievementSyncService.Status);
+        ImGui.Separator();
+
+        var achievementSheet = DalamudApi.DataManager.GetExcelSheet<Achievement>();
+        var total = BeastmasterAchievementCatalog.AchievementCount;
+        var completedCount = 0;
+        foreach (var group in BeastmasterAchievementCatalog.Groups)
+        {
+            foreach (var achievementId in group.AchievementIds)
+            {
+                if (progressService.IsAchievementCompleted(achievementId))
+                {
+                    completedCount++;
+                }
+            }
+        }
+
+        ImGui.ProgressBar((float)completedCount / total, new Vector2(-1f, 0f), $"{completedCount}/{total}");
+        ImGui.Spacing();
+
+        foreach (var group in BeastmasterAchievementCatalog.Groups)
+        {
+            ImGui.TextColored(new Vector4(1f, 0.82f, 0.25f, 1f), group.Name);
+            ImGui.Separator();
+
+            foreach (var achievementId in group.AchievementIds)
+            {
+                if (!achievementSheet.TryGetRow((uint)achievementId, out var achievement))
+                {
+                    ImGui.TextDisabled($"#{achievementId} アチーブメントデータが見つかりません");
+                    continue;
+                }
+
+                var name = achievement.Name.ExtractText();
+                var description = achievement.Description.ExtractText();
+                var points = achievement.Points;
+                var titleText = achievement.Title.Value.Masculine.ExtractText();
+                if (string.IsNullOrWhiteSpace(titleText))
+                {
+                    titleText = achievement.Title.Value.Feminine.ExtractText();
+                }
+
+                var isCompleted = progressService.IsAchievementCompleted(achievementId);
+                var stateColor = isCompleted
+                    ? new Vector4(0.35f, 0.8f, 0.48f, 1f)
+                    : new Vector4(0.62f, 0.62f, 0.62f, 1f);
+
+                ImGui.TextColored(stateColor, $"{achievementId} {name}");
+                ImGui.SameLine();
+                ImGui.TextDisabled($"[{points}]");
+                ImGui.SameLine();
+                ImGui.TextColored(stateColor, isCompleted ? "[達成済み]" : "[未達成]");
+
+                if (!string.IsNullOrWhiteSpace(description))
+                {
+                    ImGui.TextDisabled($"  {description}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(titleText))
+                {
+                    ImGui.TextDisabled($"  称号：{titleText}");
+                }
+            }
+
+            ImGui.Spacing();
+        }
+    }
+
+    private static void DrawBeastArenaChallengeNote()
+    {
+        ImGui.Spacing();
+        ImGui.Text("攻略手帳");
+        ImGui.SameLine();
+        ImGui.TextDisabled("表示時に「闘獣練」関連の攻略状況を同期します。");
+        ImGui.Spacing();
+
+        var entries = BeastmasterChallengeNote.GetBeastArenaEntries();
+        if (entries.Count == 0)
+        {
+            ImGui.TextDisabled("「闘獣練」関連の攻略手帳項目が見つかりませんでした。");
+            return;
+        }
+
+        if (!BeastmasterChallengeNote.IsLoaded())
+        {
+            ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), "攻略手帳データが読み込まれていません。ゲーム内で一度攻略手帳を開いてください。");
+            return;
+        }
+
+        var completedCount = entries.Count(entry => BeastmasterChallengeNote.IsComplete(entry.RowId));
+        ImGui.ProgressBar((float)completedCount / entries.Count, new Vector2(-1f, 0f), $"{completedCount}/{entries.Count}");
+        ImGui.Spacing();
+
+        foreach (var entry in entries)
+        {
+            var isCompleted = BeastmasterChallengeNote.IsComplete(entry.RowId);
+            var color = isCompleted
+                ? new Vector4(0.35f, 0.8f, 0.48f, 1f)
+                : new Vector4(0.9f, 0.32f, 0.3f, 1f);
+
+            ImGui.TextColored(color, isCompleted ? "[達成済み]" : "[未達成]");
+            ImGui.SameLine();
+            ImGui.TextColored(color, entry.Name);
+            if (!string.IsNullOrWhiteSpace(entry.Description) && ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip(entry.Description);
+            }
+        }
+    }
+
+    private static void DrawBeastArenaGuide()
+    {
+        ImGui.Spacing();
+        ImGui.Text("闘獣攻略");
+        ImGui.Separator();
+
+        if (!ImGui.BeginTabBar("BeastArenaGuideTabs"))
+        {
+            return;
+        }
+
+        DrawGuideFloor("第1盤", null);
+        DrawGuideFloor("第2盤", null);
+        DrawGuideFloor("第3盤", BeastmasterArenaGuide.Round3);
+        DrawGuideFloor("高段第1盤", null);
+        DrawGuideFloor("高段第2盤", null);
+
+        ImGui.EndTabBar();
+    }
+
+    private static void DrawGuideFloor(string label, IReadOnlyList<BeastmasterArenaGuideRound>? rounds)
+    {
+        if (!ImGui.BeginTabItem(label))
+        {
+            return;
+        }
+
+        if (rounds == null || rounds.Count == 0)
+        {
+            ImGui.TextDisabled("この階層の攻略データは準備中です。");
+        }
+        else
+        {
+            ImGui.TextDisabled("黄色：BOSS、灰色：雑魚敵、赤色：重要アクション");
+            ImGui.Spacing();
+            foreach (var round in rounds)
+            {
+                ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), round.Position);
+
+                var bosses = string.Join("、", round.Monsters.Where(monster => monster.IsBoss).Select(monster => monster.Name));
+                if (bosses.Length > 0)
+                {
+                    DrawWrappedColoredText($"BOSS：{bosses}", new Vector4(1f, 0.82f, 0.25f, 1f));
+                }
+
+                var minions = string.Join("、", round.Monsters.Where(monster => !monster.IsBoss).Select(monster => monster.Name));
+                if (minions.Length > 0)
+                {
+                    DrawWrappedColoredText($"雑魚：{minions}", new Vector4(0.58f, 0.62f, 0.7f, 1f));
+                }
+
+                var highlights = ExtractGuideHighlights(round.Mechanic);
+                if (highlights.Count > 0)
+                {
+                    DrawWrappedColoredText($"重要：{string.Join("、", highlights)}", new Vector4(1f, 0.45f, 0.4f, 1f));
+                }
+
+                if (!string.IsNullOrWhiteSpace(round.Mechanic))
+                {
+                    ImGui.TextWrapped($"ギミック：{round.Mechanic}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(round.Comment))
+                {
+                    DrawWrappedColoredText($"ワンポイント：{round.Comment}", new Vector4(0.58f, 0.62f, 0.7f, 1f));
+                }
+
+                ImGui.Separator();
+                ImGui.Spacing();
+            }
+        }
+
+        ImGui.EndTabItem();
+    }
+
+    private static void DrawWrappedColoredText(string text, Vector4 color)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, color);
+        ImGui.TextWrapped(text);
+        ImGui.PopStyleColor();
+    }
+
+    private static IReadOnlyList<string> ExtractGuideHighlights(string text)
+    {
+        var highlights = new List<string>();
+        var searchIndex = 0;
+        while (searchIndex < text.Length)
+        {
+            var start = text.IndexOf('「', searchIndex);
+            if (start < 0)
+            {
+                break;
+            }
+
+            var end = text.IndexOf('」', start + 1);
+            if (end < 0)
+            {
+                break;
+            }
+
+            if (end > start + 1)
+            {
+                highlights.Add(text[(start + 1)..end]);
+            }
+
+            searchIndex = end + 1;
+        }
+
+        return highlights;
+    }
+
+    private void DrawPartyPresets()
+    {
+        ImGui.Spacing();
+        ImGui.TextColored(new Vector4(1f, 0.3f, 0.25f, 1f),
+            "プリセット枠数は 10/12/14/15 から選択可能。適用時はゲーム内の現在編成枠数に合わせて調整されます。");
+        ImGui.Separator();
+
+        var presets = configuration.PartyPresets;
+        if (presets.Count == 0)
+        {
+            presets.Add(new BeastmasterPartyPreset());
+            configuration.SelectedPartyPresetIndex = 0;
+            configuration.Save();
+        }
+
+        var selectedIndex = Math.Clamp(configuration.SelectedPartyPresetIndex, 0, presets.Count - 1);
+        if (ImGui.Button("新規作成"))
+        {
+            presets.Add(new BeastmasterPartyPreset { Name = GetUniquePartyPresetName(presets, "10枠編成") });
+            configuration.SelectedPartyPresetIndex = presets.Count - 1;
+            partyPresetStatus = "編成プリセットを新規作成しました。";
+            configuration.Save();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("複製"))
+        {
+            var copy = presets[selectedIndex].Clone();
+            copy.Name = GetUniquePartyPresetName(presets, copy.Name);
+            presets.Add(copy);
+            configuration.SelectedPartyPresetIndex = presets.Count - 1;
+            partyPresetStatus = "現在のプリセットを複製しました。";
+            configuration.Save();
+        }
+        ImGui.SameLine();
+        ImGui.BeginDisabled(presets.Count <= 1);
+        if (ImGui.Button("削除"))
+        {
+            presets.RemoveAt(selectedIndex);
+            configuration.SelectedPartyPresetIndex = Math.Clamp(selectedIndex, 0, presets.Count - 1);
+            partyPresetStatus = "現在のプリセットを削除しました。";
+            configuration.Save();
+        }
+        ImGui.EndDisabled();
+        ImGui.SameLine(0f, 18f);
+        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.61f, 0.34f, 0.21f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.73f, 0.44f, 0.28f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.52f, 0.27f, 0.17f, 1f));
+        if (ImGui.Button("共有"))
+        {
+            ImGui.SetClipboardText(presets[selectedIndex].Export());
+            partyPresetStatus = "編成プリセットをクリップボードにコピーしました。";
+        }
+        ImGui.PopStyleColor(3);
+        ImGui.SameLine();
+        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.55f, 0.31f, 0.34f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.67f, 0.41f, 0.44f, 1f));
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.47f, 0.25f, 0.28f, 1f));
+        if (ImGui.Button("インポート"))
+        {
+            if (BeastmasterPartyPreset.TryImport(ImGui.GetClipboardText(), out var imported, out var error)
+                && imported != null)
+            {
+                imported.Name = GetUniquePartyPresetName(presets, imported.Name);
+                presets.Add(imported);
+                configuration.SelectedPartyPresetIndex = presets.Count - 1;
+                partyPresetStatus = "クリップボードから編成プリセットをインポートしました。";
+                configuration.Save();
+            }
+            else
+            {
+                partyPresetStatus = $"インポート失敗：{error}";
+            }
+        }
+        ImGui.PopStyleColor(3);
+        ImGui.SameLine(0f, 18f);
+        selectedIndex = Math.Clamp(configuration.SelectedPartyPresetIndex, 0, presets.Count - 1);
+        var selectedPreset = presets[selectedIndex];
+        ImGui.BeginDisabled(!petPartyService.Snapshot.Available || petPartyService.IsApplying || !CanApplyPartyPreset(selectedPreset));
+        PushPartyApplyButtonStyle();
+        if (ImGui.Button(petPartyService.IsApplying ? "適用中..." : "編成を適用", new Vector2(110f, 0f)))
+        {
+            petPartyService.TryApply(selectedPreset);
+        }
+        ImGui.PopStyleColor(3);
+        ImGui.EndDisabled();
+
+        var presetNames = string.Join('\0', presets.Select(item => item.Name)) + '\0';
+        selectedIndex = Math.Clamp(configuration.SelectedPartyPresetIndex, 0, presets.Count - 1);
+        ImGui.SetNextItemWidth(300f);
+        if (ImGui.Combo("編成プリセット", ref selectedIndex, presetNames))
+        {
+            configuration.SelectedPartyPresetIndex = selectedIndex;
+            configuration.Save();
+        }
+
+        selectedIndex = Math.Clamp(configuration.SelectedPartyPresetIndex, 0, presets.Count - 1);
+        var preset = presets[selectedIndex];
+        var name = preset.Name;
+        ImGui.SetNextItemWidth(135f);
+        if (ImGui.InputText("プリセット名", ref name, 100) && !string.IsNullOrWhiteSpace(name))
+        {
+            preset.Name = name.Trim();
+            configuration.Save();
+        }
+
+        ImGui.SameLine();
+        var slotCount = preset.SlotCount;
+        var slotIndex = slotCount switch { 12 => 1, 14 => 2, 15 => 3, _ => 0 };
+        ImGui.SetNextItemWidth(100f);
+        if (ImGui.Combo("プリセット枠数", ref slotIndex, "10 枠\0 12 枠\0 14 枠\0 15 枠\0"))
+        {
+            preset.SlotCount = slotIndex switch { 1 => 12, 2 => 14, 3 => 15, _ => 10 };
+            if (preset.Members.Count > preset.SlotCount)
+            {
+                preset.Members.RemoveRange(preset.SlotCount, preset.Members.Count - preset.SlotCount);
+            }
+            configuration.Save();
+        }
+
+        ImGui.Text($"編成メンバー：{preset.Members.Count}/{preset.SlotCount}");
+        if (petPartyService.Snapshot.Available && preset.SlotCount != petPartyService.Snapshot.Capacity)
+        {
+            var difference = petPartyService.Snapshot.Capacity - preset.SlotCount;
+            ImGui.TextColored(new Vector4(1f, 0.75f, 0.25f, 1f), difference < 0
+                ? $"現在の編成は {petPartyService.Snapshot.Capacity} 枠のため、プリセットの前半 {petPartyService.Snapshot.Capacity} 枠のみ適用されます。"
+                : $"現在の編成は {petPartyService.Snapshot.Capacity} 枠のため、適用後に {difference} 枠の空きができます。");
+        }
+        var availableBeasts = BeastmasterCatalog.Entries
+            .Where(entry => progressService.IsCompleted(entry.Key))
+            .ToArray();
+        for (var position = 0; position < preset.SlotCount; position++)
+        {
+            var currentNumber = position < preset.Members.Count ? preset.Members[position] : 0;
+            var options = new List<(int Number, string Label)> { (0, "-- 空き --") };
+            options.AddRange(availableBeasts.Select(entry =>
+            {
+                var progress = progressService.GetBeastProgress(entry.Number);
+                var level = progress == null ? "Lv.--" : $"Lv.{progress.Level}";
+                return (entry.Number, $"{entry.Number:00} - {entry.Name} - {level}");
+            }));
+
+            var optionIndex = options.FindIndex(option => option.Number == currentNumber);
+            if (optionIndex < 0) optionIndex = 0;
+            ImGui.SetNextItemWidth(330f);
+            if (ImGui.Combo($"位置 {position + 1:00}##party-member-{position}", ref optionIndex,
+                    string.Join('\0', options.Select(option => option.Label)) + '\0'))
+            {
+                SetPartyPresetMember(preset, position, options[optionIndex].Number);
+            }
+        }
+
+        if (!preset.TryValidate(out var validationError))
+        {
+            ImGui.TextColored(new Vector4(1f, 0.4f, 0.3f, 1f), validationError);
+        }
+        else
+        {
+            var unavailableMembers = preset.Members
+                .Where(number => !progressService.IsCompleted(BeastmasterCatalog.Entries[number - 1].Key))
+                .ToArray();
+            if (unavailableMembers.Length > 0)
+            {
+                ImGui.TextColored(new Vector4(1f, 0.4f, 0.3f, 1f),
+                    $"未捕獲または利用不可：{string.Join("、", unavailableMembers.Select(number => number.ToString("00")))}");
+            }
+        }
+
+        if (petPartyService.Snapshot.Available)
+        {
+            ImGui.Separator();
+            DrawCurrentPetParty(preset);
+        }
+        if (!string.IsNullOrWhiteSpace(partyPresetStatus))
+        {
+            ImGui.TextWrapped(partyPresetStatus);
+        }
+    }
+
+    private void DrawCurrentPetParty(BeastmasterPartyPreset preset)
+    {
+        var snapshot = petPartyService.Snapshot;
+        ImGui.Text("現在のゲーム内編成");
+        if (!snapshot.Available)
+        {
+            ImGui.TextDisabled(snapshot.Reason);
+            return;
+        }
+
+        ImGui.TextDisabled($"現在の編成：{snapshot.MemberCount}/{snapshot.Capacity}");
+        var maximum = Math.Max(snapshot.Members.Count, preset.Members.Count);
+        for (var index = 0; index < maximum; index++)
+        {
+            var current = index < snapshot.Members.Count ? snapshot.Members[index].CatalogNumber : 0;
+            var expected = index < preset.Members.Count ? preset.Members[index] : 0;
+            var currentText = current == 0 ? "空" : $"{current:00} {BeastmasterCatalog.Entries[current - 1].Name}";
+            var expectedText = expected == 0 ? "空" : $"{expected:00} {BeastmasterCatalog.Entries[expected - 1].Name}";
+            var matches = current == expected;
+            ImGui.TextColored(matches
+                    ? new Vector4(0.45f, 0.8f, 0.5f, 1f)
+                    : new Vector4(1f, 0.65f, 0.25f, 1f),
+                $"{index + 1:00}: {currentText} → {expectedText}");
+        }
+    }
+
+    private void SetPartyPresetMember(BeastmasterPartyPreset preset, int position, int number)
+    {
+        if (number == 0)
+        {
+            if (position < preset.Members.Count)
+            {
+                preset.Members.RemoveRange(position, preset.Members.Count - position);
+            }
+            partyPresetStatus = "指定位置以降のメンバーをクリアしました。";
+            configuration.Save();
+            return;
+        }
+
+        if (preset.Members.Contains(number))
+        {
+            partyPresetStatus = $"図鑑 {number:00} は既にプリセットに含まれています。重複して追加することはできません。";
+            return;
+        }
+
+        if (position < preset.Members.Count)
+        {
+            preset.Members[position] = number;
+        }
+        else if (position == preset.Members.Count)
+        {
+            preset.Members.Add(number);
+        }
+        else
+        {
+            partyPresetStatus = "前の位置から順に設定してください。空枠は末尾のみ配置できます。";
+            return;
+        }
+
+        partyPresetStatus = "プリセットを保存しました。";
+        configuration.Save();
+    }
+
+    private static string GetUniquePartyPresetName(IEnumerable<BeastmasterPartyPreset> presets, string baseName)
+    {
+        var names = presets.Select(preset => preset.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!names.Contains(baseName)) return baseName;
+        for (var suffix = 2; ; suffix++)
+        {
+            var candidate = $"{baseName} ({suffix})";
+            if (!names.Contains(candidate)) return candidate;
+        }
+    }
+
+    private bool CanApplyPartyPreset(BeastmasterPartyPreset preset)
+        => preset.TryValidate(out _)
+            && preset.Members.All(number => progressService.IsCompleted(BeastmasterCatalog.Entries[number - 1].Key));
+
     private static string GetCatalogCoordinate(BeastmasterCatalogEntry entry)
         => entry.LocationType switch
         {
@@ -1750,7 +2527,7 @@ public sealed class PluginUI
         => attribute switch
         {
             BeastmasterAttribute.猛 => new Vector4(0.95f, 0.35f, 0.3f, 1f),
-            BeastmasterAttribute.坚 => new Vector4(0.35f, 0.65f, 1f, 1f),
+            BeastmasterAttribute.堅 => new Vector4(0.35f, 0.65f, 1f, 1f),
             BeastmasterAttribute.魔 => new Vector4(1f, 0.82f, 0.25f, 1f),
             BeastmasterAttribute.翔 => new Vector4(0.4f, 0.9f, 0.5f, 1f),
             _ => new Vector4(0.6f, 0.6f, 0.6f, 1f),
@@ -1846,7 +2623,7 @@ public sealed class PluginUI
             configuration.OverlayThreeColumnMode);
         ImGui.Spacing();
         DrawAdvancedActionToggles();
-        ImGui.TextDisabled("優先順位：スキルシーケンス → 魔獣回復薬 → ルールモード → 連携技2段目 → はなつ → 最後の一撃 → 鼓舞 → 声援 → 万象流転 → 連携技1段目 → 安全シールド → とらえる → 基本コンボ");
+        ImGui.TextDisabled("優先順位：スキルシーケンス → 魔獣回復薬 → ルールモード → 連携技2段目 → はなつ → 最後の一撃 → きあい → おうえん → 万象流転 → 連携技1段目 → 安全シールド → とらえる → 基本コンボ");
 
         ImGui.Spacing();
         DrawSequenceSettings();
@@ -1917,10 +2694,10 @@ public sealed class PluginUI
                 var threeColumn = 0;
                 DrawOverlayAdvancedToggle("獣心連携", configuration.BeastHeartCooperationEnabled, () => ToggleCooperation(true), "ビーストハート連携（黄）", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("獣霊連携", configuration.BeastSoulCooperationEnabled, () => ToggleCooperation(false), "ビーストソウル連携（青）", ref threeColumn, columnCount: 3);
-                DrawOverlayAdvancedToggle("鼓舞", configuration.AutoDrumEnabled, () => ToggleBoolean(nameof(configuration.AutoDrumEnabled)), "鼓舞・リキャスト毎", ref threeColumn, columnCount: 3);
+                DrawOverlayAdvancedToggle("きあい", configuration.AutoDrumEnabled, () => ToggleBoolean(nameof(configuration.AutoDrumEnabled)), "きあい・リキャスト毎", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("万象・物理", configuration.PhysicalThirdFormEnabled, () => ToggleThirdForm(true), "万象流転（物理）", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("万象・魔法", configuration.MagicalThirdFormEnabled, () => ToggleThirdForm(false), "万象流転（魔法）", ref threeColumn, columnCount: 3);
-                DrawOverlayAdvancedToggle("声援", configuration.AutoCheerEnabled, () => ToggleBoolean(nameof(configuration.AutoCheerEnabled)), "声援・リキャスト毎", ref threeColumn, columnCount: 3);
+                DrawOverlayAdvancedToggle("おうえん", configuration.AutoCheerEnabled, () => ToggleBoolean(nameof(configuration.AutoCheerEnabled)), "おうえん・リキャスト毎", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("自動呼笛", configuration.AutoWhistleEnabled, () => ToggleBoolean(nameof(configuration.AutoWhistleEnabled)), "自動呼笛", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("最後の一撃", configuration.AutoFinalStrikeEnabled, () => autoCaptureService.SetFinalStrikeEnabled(!configuration.AutoFinalStrikeEnabled), "最後の一撃", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("はなつ", configuration.AutoReleaseEnabled, () => ToggleBoolean(nameof(configuration.AutoReleaseEnabled)), "はなつ・リキャスト毎", ref threeColumn, columnCount: 3);
@@ -1959,18 +2736,18 @@ public sealed class PluginUI
                     if (configuration.MagicalThirdFormEnabled) configuration.PhysicalThirdFormEnabled = false;
                     configuration.Save();
                 }, "万象流転（魔法）", ref column);
-            DrawOverlayAdvancedToggle("鼓舞", configuration.AutoDrumEnabled,
+            DrawOverlayAdvancedToggle("きあい", configuration.AutoDrumEnabled,
                 () =>
                 {
                     configuration.AutoDrumEnabled = !configuration.AutoDrumEnabled;
                     configuration.Save();
-                }, "鼓舞・リキャスト毎：獣心が0の時は通常判定、獣心が0より大きい時は万象流転（物理または魔法）有効時のみ判定。スキルシステム許可時に自動で鼓舞（44905）を使用します。", ref column);
-            DrawOverlayAdvancedToggle("声援", configuration.AutoCheerEnabled,
+                }, "きあい・リキャスト毎：獣心が0の時は通常判定、獣心が0より大きい時は万象流転（物理または魔法）有効時のみ判定。スキルシステム許可時に自動できあい（44905）を使用します。", ref column);
+            DrawOverlayAdvancedToggle("おうえん", configuration.AutoCheerEnabled,
                 () =>
                 {
                     configuration.AutoCheerEnabled = !configuration.AutoCheerEnabled;
                     configuration.Save();
-                }, "声援・リキャスト毎：獣霊が0の時は通常判定、獣霊が0より大きい時は万象流転（物理または魔法）有効時のみ判定。スキルシステム許可時に自動で声援（44904）を使用します。", ref column);
+                }, "おうえん・リキャスト毎：獣霊が0の時は通常判定、獣霊が0より大きい時は万象流転（物理または魔法）有効時のみ判定。スキルシステム許可時に自動でおうえん（44904）を使用します。", ref column);
             DrawOverlayAdvancedToggle("自動呼笛", configuration.AutoWhistleEnabled,
                 () =>
                 {
@@ -2064,8 +2841,10 @@ public sealed class PluginUI
             ImGui.SetTooltip("使役獣がいない時、呼笛 1→2→3 の順で使用可能なものを自動召喚します（召喚後1秒待機）。");
         }
 
-        DrawCompactSettingCheckbox("鼓舞", "鼓舞・リキャスト毎：獣心が0の時は通常判定、獣心が0より大きい時は万象流転（物理または魔法）有効時のみ判定。スキルシステム許可時に自動で鼓舞（44905）を使用します。", nameof(configuration.AutoDrumEnabled), configuration.AutoDrumEnabled);
-        DrawCompactSettingCheckbox("声援", "声援・リキャスト毎：獣霊が0の時は通常判定、獣霊が0より大きい時は万象流転（物理または魔法）有効時のみ判定。スキルシステム許可時に自動で声援（44904）を使用します。", nameof(configuration.AutoCheerEnabled), configuration.AutoCheerEnabled);
+        DrawCompactSettingCheckbox("きあい", "きあい・リキャスト毎：御獣の心が0の時、または御獣の心が3かつ技力が0の時に判定。アクション実行可能な場合、GCD待機中に自動で使用します（44905）。", nameof(configuration.AutoDrumEnabled), configuration.AutoDrumEnabled);
+        DrawCompactSettingCheckbox("おうえん", "おうえん・リキャスト毎：獣霊の心が0の時、または獣霊の心が3かつ獣力が0の時に判定。アクション実行可能な場合、GCD待機中に自動で使用します（44904）。", nameof(configuration.AutoCheerEnabled), configuration.AutoCheerEnabled);
+        DrawCompactSettingCheckbox("かりる", "かりる・リキャスト毎：現在召喚中の魔獣からアビリティをかりる（44895）。実行後、魔獣技がかりたアクションに変化します。デフォルト無効。", nameof(configuration.AutoBorrowEnabled), configuration.AutoBorrowEnabled);
+        DrawCompactSettingCheckbox("魔獣技", "魔獣技・リキャスト毎：かりた魔獣のアビリティ（44886 変化後）を実行します。デフォルト無効。", nameof(configuration.AutoBeastSkillEnabled), configuration.AutoBeastSkillEnabled);
 
         var autoRecoveryItemEnabled = configuration.AutoRecoveryItemEnabled;
         if (ImGui.Checkbox("低HP時に自動で魔獣回復薬を使用", ref autoRecoveryItemEnabled))
@@ -2513,7 +3292,7 @@ public sealed class PluginUI
 
     private static string GetThirdFormReason(BeastmasterGaugeSnapshot snapshot)
         => snapshot.BeastHeartStacks >= 3 && (snapshot.HasWhiteStatus || snapshot.HasPurpleStatus)
-            ? $"{GetBlackWhiteStatus(snapshot)}、ビーストハート {snapshot.BeastHeartStacks} スタック、鼓舞使用可能"
+            ? $"{GetBlackWhiteStatus(snapshot)}、ビーストハート {snapshot.BeastHeartStacks} スタック、きあい使用可能"
             : snapshot.HasWhiteStatus || snapshot.HasPurpleStatus
                 ? $"{GetBlackWhiteStatus(snapshot)}、ビーストハート 3スタック待ち（現在 {snapshot.BeastHeartStacks}）"
                 : "活命撃（白）または滅命撃（黒/紫）の付与待ち";
@@ -2642,6 +3421,12 @@ public sealed class PluginUI
                 case nameof(configuration.AutoCheerEnabled):
                     configuration.AutoCheerEnabled = value;
                     break;
+                case nameof(configuration.AutoBorrowEnabled):
+                    configuration.AutoBorrowEnabled = value;
+                    break;
+                case nameof(configuration.AutoBeastSkillEnabled):
+                    configuration.AutoBeastSkillEnabled = value;
+                    break;
             }
             configuration.Save();
         }
@@ -2695,7 +3480,7 @@ public sealed class PluginUI
         DrawDebugActionRow(
             "##DebugProjectDataType",
             ref debugProjectDataType,
-            "魔獣を調教せし者\0現在の全クエスト状態\0魔獣使いクエスト一覧\0魔獣図鑑コンテンツID\0自動「とらえる」ID\0魔獣属性マップ\0魔獣図鑑クライアントデータ\0おすすめ装備アイテムID\0魔獣回復薬スキャン\0コンテンツ専用アイテムコンテナスキャン\0XBM画面スキャン\0XBMアイテム構造\0",
+            "魔獣を調教せし者\0現在の全クエスト状態\0魔獣使いクエスト一覧\0魔獣図鑑コンテンツID\0自動「とらえる」ID\0魔獣属性マップ\0魔獣図鑑クライアントデータ\0おすすめ装備アイテムID\0魔獣回復薬スキャン\0コンテンツ専用アイテムコンテナスキャン\0XBM画面スキャン\0XBMアイテム構造\0闘獣アイテム一覧\0魔獣レベル経験値構造\0闘獣リザルトレベル経験値\0魔獣編成構造\0魔獣使い育成データモジュール\0",
             "読み込み##DebugProjectData",
             RunDebugProjectData);
 
@@ -2764,6 +3549,11 @@ public sealed class PluginUI
             9 => debugDataService.FindContentInventoryContainers(),
             10 => debugDataService.GetXbmAddonProbe(),
             11 => debugDataService.GetXbmItemStructureProbe(),
+            12 => debugDataService.GetCrucibleItemList(),
+            13 => debugDataService.GetBeastLevelExperienceProbe(),
+            14 => debugDataService.GetBeastResultProgressionProbe(),
+            15 => debugDataService.GetPetPartyStructureProbe(),
+            16 => debugDataService.GetXbmModuleProbe(),
             _ => "未知のプロジェクトデータ種別。",
         });
     }

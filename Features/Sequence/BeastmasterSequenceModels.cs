@@ -72,24 +72,24 @@ public sealed class BeastmasterSequenceDefinition
         {
             CountdownSteps =
             [
-                new(-9, 44894, "三号呼笛"),
+                new(-9, 44894, "三号呼び笛"),
                 new(-5, 44895, "かりる"),
-                new(-4, 44881, "一号呼笛"),
-                new(-2, 44896, "百獣の皮"),
+                new(-4, 44881, "一号呼び笛"),
+                new(-2, 44896, "ビーストスキン"),
                 new(0, 44893, "シールドチャージ"),
             ],
             CombatSteps =
             [
-                new(null, 44879, "砕き割り"),
-                new(null, 44905, "鼓舞"),
+                new(null, 44879, "スマッシュ"),
+                new(null, 44905, "きあい"),
                 new(null, 44890, "はなつ"),
-                new(null, 44883, "噛み砕き"),
-                new(null, 44904, "声援"),
+                new(null, 44883, "アクスバイト"),
+                new(null, 44904, "おうえん"),
                 new(null, 44891, "最後の一撃"),
-                new(null, 44885, "裂盾斧"),
-                new(null, 44892, "二号呼笛"),
+                new(null, 44885, "シールドスプリッター"),
+                new(null, 44892, "二号呼び笛"),
                 new(null, 44890, "はなつ"),
-                new(null, 44894, "三号呼笛"),
+                new(null, 44894, "三号呼び笛"),
             ],
         };
 
@@ -148,23 +148,18 @@ public sealed class BeastmasterSequenceDefinition
         {
             var line = lines[index].Trim();
             if (line.Length == 0) continue;
-            if (line is "[カウントダウン]" or "[倒计时]" or "[戦闘]" or "[战斗]")
+            if (line is "[カウントダウン]" or "[戦闘]")
             {
-                section = line switch
-                {
-                    "[カウントダウン]" or "[倒计时]" => "[カウントダウン]",
-                    "[戦闘]" or "[战斗]" => "[戦闘]",
-                    _ => line,
-                };
+                section = line;
                 continue;
             }
-            if (line.StartsWith("名前|", StringComparison.Ordinal) || line.StartsWith("名称|", StringComparison.Ordinal))
+            if (line.StartsWith("名前|", StringComparison.Ordinal))
             {
                 var idx = line.IndexOf('|');
                 result.Name = line[(idx + 1)..];
                 continue;
             }
-            if (line.StartsWith("説明|", StringComparison.Ordinal) || line.StartsWith("说明|", StringComparison.Ordinal))
+            if (line.StartsWith("説明|", StringComparison.Ordinal))
             {
                 var idx = line.IndexOf('|');
                 result.Description = line[(idx + 1)..];

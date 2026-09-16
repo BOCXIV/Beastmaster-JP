@@ -8,12 +8,15 @@ namespace Beastmaster;
 public sealed class BeastmasterRuleService
 {
     private readonly BeastmasterConfiguration configuration;
+    private readonly BeastmasterCrucibleItemService crucibleItemService;
     private DateTime lastChatUtc = DateTime.MinValue;
     private string lastChatKey = string.Empty;
+    private readonly Dictionary<string, string> lastFailureMessages = new(StringComparer.Ordinal);
 
-    public BeastmasterRuleService(BeastmasterConfiguration configuration)
+    public BeastmasterRuleService(BeastmasterConfiguration configuration, BeastmasterCrucibleItemService crucibleItemService)
     {
         this.configuration = configuration;
+        this.crucibleItemService = crucibleItemService;
     }
 
     public bool Enabled => configuration.RuleModeEnabled;
@@ -35,6 +38,7 @@ public sealed class BeastmasterRuleService
         }
 
         var territoryId = (ushort)Math.Clamp(DalamudApi.ClientState.TerritoryType, 0u, ushort.MaxValue);
+        var validRuleCount = 0;
         foreach (var ruleSet in configuration.RuleSets)
         {
             if (!ruleSet.Enabled || !ruleSet.AppliesTo(territoryId))
@@ -50,12 +54,32 @@ public sealed class BeastmasterRuleService
                     continue;
                 }
 
+                validRuleCount++;
+
                 if (!Matches(rule, player, target, out var matchReason))
                 {
                     continue;
                 }
 
                 return TryExecute(actionManager, ruleSet, rule, ruleIndex, player, target, matchReason, now);
+            }
+        }
+
+        if (configuration.RuleDiagnosticsEnabled)
+        {
+            var message = validRuleCount == 0
+                ? $"ルール診断：現在のエリア {territoryId} に実行可能な有効ルールがありません"
+                : $"ルール診断：{validRuleCount} 件のルールをチェックしましたが、条件に一致するものはありませんでした";
+            RecordDiagnostic(message);
+            if (validRuleCount > 0)
+            {
+                var diagnosticRuleSet = configuration.RuleSets.FirstOrDefault(set => set.Enabled
+                    && set.AppliesTo(territoryId)
+                    && set.DiagnosticMode == BeastmasterRuleDiagnosticMode.Full);
+                if (diagnosticRuleSet != null)
+                {
+                    PrintChat($"{diagnosticRuleSet.Name}|未命中", message, now, TimeSpan.FromSeconds(2));
+                }
             }
         }
 
@@ -72,6 +96,11 @@ public sealed class BeastmasterRuleService
         string matchReason,
         DateTime now)
     {
+        if (rule.ActionType == BeastmasterRuleActionType.CrucibleItem)
+        {
+            return TryExecuteCrucibleItem(ruleSet, rule, ruleIndex, target, matchReason, now);
+        }
+
         var targetId = BeastmasterRuleActions.RequiresTarget(rule.ActionId)
             ? target?.GameObjectId ?? 0UL
             : 0UL;
@@ -112,12 +141,47 @@ public sealed class BeastmasterRuleService
             return false;
         }
 
-        var message = $"ルールセット「{ruleSet.Name}」第 {ruleIndex + 1} ルール「{rule.Name}」合致：{matchReason}；{availability.ActionName}（{availability.ActionId}）を実行リクエスト";
+        var message = $"ルールセット「{ruleSet.Name}」第 {ruleIndex + 1} 条「{rule.Name}」条件一致：{matchReason}；{availability.ActionName}（{availability.ActionId}）を実行リクエスト";
         RecordDiagnostic(message);
+        lastFailureMessages.Remove($"{ruleSet.Name}|{rule.Name}");
         if (configuration.RuleDiagnosticsEnabled
             && ruleSet.DiagnosticMode == BeastmasterRuleDiagnosticMode.Full)
         {
-            PrintChat(ruleSet, rule, "成功", message, now, TimeSpan.FromSeconds(2));
+            PrintChat($"{ruleSet.Name}|{rule.Name}|成功", message, now, TimeSpan.FromSeconds(2));
+        }
+        return true;
+    }
+
+    private bool TryExecuteCrucibleItem(
+        BeastmasterRuleSetDefinition ruleSet,
+        BeastmasterRuleDefinition rule,
+        int ruleIndex,
+        IBattleChara? target,
+        string matchReason,
+        DateTime now)
+    {
+        if (rule.CrucibleItemType == BeastmasterCrucibleItemType.Fang && target == null)
+        {
+            Fail(ruleSet, rule, ruleIndex, matchReason, "クルーシブルアイテムには有効なターゲットが必要です", now);
+            return false;
+        }
+
+        var player = DalamudApi.ObjectTable.LocalPlayer as IBattleChara;
+        if (player == null || !crucibleItemService.TryUseCrucibleItemOnTarget(
+                rule.CrucibleItemType, player, target!, now, out var itemId))
+        {
+            Fail(ruleSet, rule, ruleIndex, matchReason, crucibleItemService.LastFailureReason, now);
+            return false;
+        }
+
+        var itemName = BeastmasterRuleActions.GetCrucibleItemName(itemId);
+        var message = $"ルールセット「{ruleSet.Name}」第 {ruleIndex + 1} 条「{rule.Name}」条件一致：{matchReason}；{itemName}（{itemId}）を使用しました";
+        RecordDiagnostic(message);
+        lastFailureMessages.Remove($"{ruleSet.Name}|{rule.Name}");
+        if (configuration.RuleDiagnosticsEnabled
+            && ruleSet.DiagnosticMode == BeastmasterRuleDiagnosticMode.Full)
+        {
+            PrintChat($"{ruleSet.Name}|{rule.Name}|成功", message, now, TimeSpan.FromSeconds(2));
         }
         return true;
     }
@@ -130,12 +194,12 @@ public sealed class BeastmasterRuleService
         string failureReason,
         DateTime now)
     {
-        var message = $"ルールセット「{ruleSet.Name}」第 {ruleIndex + 1} ルール「{rule.Name}」合致：{matchReason}；{failureReason}のため通常ACRへフォールバック";
+        var message = $"ルールセット「{ruleSet.Name}」第 {ruleIndex + 1} 条「{rule.Name}」条件一致：{matchReason}；{failureReason}のため通常ACRへフォールバック";
         RecordDiagnostic(message);
         if (configuration.RuleDiagnosticsEnabled
             && ruleSet.DiagnosticMode != BeastmasterRuleDiagnosticMode.Off)
         {
-            PrintChat(ruleSet, rule, failureReason, message, now, TimeSpan.FromSeconds(5));
+            PrintFailureChat($"{ruleSet.Name}|{rule.Name}", failureReason, message);
         }
     }
 
@@ -182,6 +246,20 @@ public sealed class BeastmasterRuleService
                 }
                 return false;
             }
+            case BeastmasterRuleConditionType.TargetDataId:
+            {
+                if (target == null)
+                {
+                    return false;
+                }
+
+                if (target.BaseId == rule.DataId)
+                {
+                    reason = $"現在のターゲットの DataID が {rule.DataId} に一致";
+                    return true;
+                }
+                return false;
+            }
             default:
                 return false;
         }
@@ -213,14 +291,11 @@ public sealed class BeastmasterRuleService
     }
 
     private void PrintChat(
-        BeastmasterRuleSetDefinition ruleSet,
-        BeastmasterRuleDefinition rule,
-        string result,
+        string key,
         string message,
         DateTime now,
         TimeSpan interval)
     {
-        var key = $"{ruleSet.Name}|{rule.Name}|{result}";
         if (key == lastChatKey && now - lastChatUtc < interval)
         {
             return;
@@ -228,6 +303,18 @@ public sealed class BeastmasterRuleService
 
         lastChatKey = key;
         lastChatUtc = now;
-        DalamudApi.ChatGui.Print($"[Beastmaster {DateTime.Now:HH:mm:ss}] {message}");
+        DalamudApi.ChatGui.Print($"[魔獣使いアシスト {DateTime.Now:HH:mm:ss}] {message}");
+    }
+
+    private void PrintFailureChat(string ruleKey, string failureReason, string message)
+    {
+        if (lastFailureMessages.TryGetValue(ruleKey, out var previousReason)
+            && previousReason == failureReason)
+        {
+            return;
+        }
+
+        lastFailureMessages[ruleKey] = failureReason;
+        DalamudApi.ChatGui.Print($"[魔獣使いアシスト {DateTime.Now:HH:mm:ss}] {message}");
     }
 }

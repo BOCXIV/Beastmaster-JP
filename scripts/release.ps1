@@ -77,7 +77,7 @@ try {
     Set-Utf8NoBomContent $manifestPath $manifest
 
     $repo = Get-Content -LiteralPath $repoPath -Raw -Encoding UTF8
-    $downloadUrl = "https://github.com/anmili2022/Beastmaster/releases/download/$Version/Beastmaster.zip"
+    $downloadUrl = "https://github.com/BOCXIV/Beastmaster-JP/releases/download/$Version/Beastmaster.zip"
     $repo = [regex]::Replace($repo, '("AssemblyVersion"\s*:\s*")[^"]+("\s*)', "`${1}$Version`${2}", 1)
     foreach ($property in @('DownloadLinkInstall', 'DownloadLinkTesting', 'DownloadLinkUpdate')) {
         $pattern = '("{0}"\s*:\s*")[^"]+("\s*)' -f $property

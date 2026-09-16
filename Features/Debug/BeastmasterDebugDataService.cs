@@ -6,6 +6,8 @@ using System.Numerics;
 using System.Text;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Client.UI.Misc;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using Dalamud.Game.NativeWrapper;
 using Dalamud.Game.Inventory;
 
@@ -416,6 +418,382 @@ public sealed class BeastmasterDebugDataService
         return builder.ToString().TrimEnd();
     }
 
+    public unsafe string GetBeastLevelExperienceProbe()
+    {
+        const int pageValueIndex = 10;
+        const int firstEntryValueIndex = 24;
+        const int entryStride = 8;
+        const int entriesPerPage = 25;
+        const int agentDumpSize = 0x400;
+
+        var builder = new StringBuilder()
+            .AppendLine("種別: 魔獣レベル経験値構造")
+            .AppendLine("モード: 読み取り専用（コールバック発火・ページめくり・メモリ書き込みなし）")
+            .AppendLine("目的: 各魔獣の現在レベル・現在経験値・次レベル必要経験値フィールドの特定")
+            .AppendLine("取得方法: 魔獣図鑑を開いた状態で取得。同一の魔獣が経験値を獲得する前後にそれぞれ取得して比較することを推奨")
+            .AppendLine();
+
+        var addonAddress = DalamudApi.GameGui.GetAddonByName("XBMMonsterNotebook", 1).Address;
+        var addon = (AtkUnitBase*)addonAddress;
+        if (addon == null || !addon->IsVisible || addon->AtkValues == null)
+        {
+            builder.AppendLine("XBMMonsterNotebook が存在しないか不可視です。")
+                .AppendLine("ゲーム内で魔獣図鑑を開き、ウィンドウを表示した状態にしてください。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var page = addon->AtkValuesCount > pageValueIndex
+            ? addon->AtkValues[pageValueIndex].UInt
+            : uint.MaxValue;
+        builder.AppendLine($"Addon Address=0x{addonAddress.ToInt64():X}")
+            .AppendLine($"AtkValues Address=0x{(nint)addon->AtkValues:X} | AtkValueSize=0x{sizeof(AtkValue):X}")
+            .AppendLine($"AtkValuesCount={addon->AtkValuesCount} | Page={page}")
+            .AppendLine($"詳細内部番号 AtkValue: 0x{(nint)(addon->AtkValues + 227):X} | このフィールドは遅延する可能性があるため同期には使用しません")
+            .AppendLine($"選択表示番号 AtkValue: 0x{(nint)(addon->AtkValues + 229):X} | Value[231] アイコンとともに検証")
+            .AppendLine($"選択獣レベル AtkValue: 0x{(nint)(addon->AtkValues + 258):X} | タイプ=ManagedString、数値は Value[258] を読み取り")
+            .AppendLine($"選択現在経験値 AtkValue: 0x{(nint)(addon->AtkValues + 261):X} | UInt数値: 0x{(nint)(&addon->AtkValues[261].UInt):X}")
+            .AppendLine($"選択経験値上限 AtkValue: 0x{(nint)(addon->AtkValues + 262):X} | UInt数値: 0x{(nint)(&addon->AtkValues[262].UInt):X}")
+            .AppendLine()
+            .AppendLine("現在ページのエントリフィールド（各項目 8 個の AtkValue）:");
+
+        for (var entryIndex = 0; entryIndex < entriesPerPage; entryIndex++)
+        {
+            var valueIndex = firstEntryValueIndex + entryIndex * entryStride;
+            if (valueIndex + entryStride > addon->AtkValuesCount)
+            {
+                break;
+            }
+
+            var number = page <= 1 ? 1 + (int)page * entriesPerPage + entryIndex : entryIndex + 1;
+            builder.AppendLine($"図鑑 {number:00} | Value[{valueIndex}..{valueIndex + entryStride - 1}]");
+            for (var field = 0; field < entryStride; field++)
+            {
+                var value = addon->AtkValues[valueIndex + field];
+                builder.AppendLine($"  +{field}: {FormatAtkValue(value)}");
+            }
+        }
+
+        builder.AppendLine().AppendLine("図鑑非エントリフィールド:");
+        for (var index = 0; index < addon->AtkValuesCount; index++)
+        {
+            if (index >= firstEntryValueIndex
+                && index < firstEntryValueIndex + entriesPerPage * entryStride)
+            {
+                continue;
+            }
+
+            builder.AppendLine($"  Value[{index}]: {FormatAtkValue(addon->AtkValues[index])}");
+        }
+
+        var agentModule = AgentModule.Instance();
+        var agent = agentModule == null ? null : (byte*)agentModule->GetAgentByInternalId((AgentId)500);
+        builder.AppendLine().AppendLine("Agent 500 候補整数（先頭 0x400 バイト）:");
+        if (agent == null)
+        {
+            builder.AppendLine("Agent 500 が利用できません。");
+            return builder.ToString().TrimEnd();
+        }
+
+        builder.AppendLine($"Agent Address=0x{(nint)agent:X}");
+        for (var offset = 0; offset < agentDumpSize; offset += 16)
+        {
+            builder.Append($"  +0x{offset:X3}:");
+            for (var column = 0; column < 16; column += 4)
+            {
+                var value = *(uint*)(agent + offset + column);
+                builder.Append($" {value,10}");
+            }
+            builder.AppendLine();
+        }
+
+        AppendDetailProgressionProbe(builder, agentModule);
+        AppendPetPartyProgressionProbe(builder, agentModule);
+        AppendXbmAddonVisibility(builder);
+
+        return builder.ToString().TrimEnd();
+    }
+
+    public unsafe string GetBeastResultProgressionProbe()
+    {
+        const int agentDumpSize = 0x1000;
+        var builder = new StringBuilder()
+            .AppendLine("種別: 闘獣リザルトレベル経験値")
+            .AppendLine("モード: 読み取り専用（コールバック発火・リザルト退出・メモリ書き込みなし）")
+            .AppendLine("目的: 各ラウンドの XBMResult 画面から参戦魔獣のリザルト後レベルと経験値を特定")
+            .AppendLine("現在の検証値: 図鑑 02 リス種、レベル 6、経験値 9/100")
+            .AppendLine();
+
+        var resultAddress = DalamudApi.GameGui.GetAddonByName("XBMResult", 1).Address;
+        var result = (AtkUnitBase*)resultAddress;
+        if (result == null || !result->IsVisible || result->AtkValues == null)
+        {
+            builder.AppendLine("XBMResult が存在しないか不可視です。闘獣終了後の経験値リザルト画面を表示した状態で取得してください。");
+            AppendXbmAddonVisibility(builder);
+            return builder.ToString().TrimEnd();
+        }
+
+        builder.AppendLine($"Result Addon Address=0x{resultAddress.ToInt64():X}")
+            .AppendLine($"Result AtkValuesCount={result->AtkValuesCount}")
+            .AppendLine("Result AtkValues:");
+        for (var index = 0; index < result->AtkValuesCount; index++)
+        {
+            builder.AppendLine($"  ResultValue[{index}]: {FormatAtkValue(result->AtkValues[index])}");
+        }
+
+        var agentModule = AgentModule.Instance();
+        var agent = agentModule == null ? null : (byte*)agentModule->GetAgentByInternalId((AgentId)505);
+        builder.AppendLine().AppendLine("Agent 505 候補整数（先頭 0x1000 バイト）:");
+        if (agent == null)
+        {
+            builder.AppendLine("Agent 505 が利用できません。");
+            return builder.ToString().TrimEnd();
+        }
+
+        builder.AppendLine($"Agent Address=0x{(nint)agent:X}");
+        for (var offset = 0; offset < agentDumpSize; offset += 4)
+        {
+            var value = *(uint*)(agent + offset);
+            if (value is 6 or 9 or 100
+                || (value >> 16) is 6 or 9 or 100
+                || (value & 0xFFFF) is 6 or 9 or 100)
+            {
+                builder.AppendLine($"  候補 +0x{offset:X3}: UInt={value} | High16={value >> 16} | Low16={value & 0xFFFF}");
+            }
+        }
+
+        builder.AppendLine("Agent 505 完全整数:");
+        for (var offset = 0; offset < agentDumpSize; offset += 16)
+        {
+            builder.Append($"  +0x{offset:X3}:");
+            for (var column = 0; column < 16; column += 4)
+            {
+                var value = *(uint*)(agent + offset + column);
+                builder.Append($" {value,10}");
+            }
+            builder.AppendLine();
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    public unsafe string GetPetPartyStructureProbe()
+    {
+        const int memberCountIndex = 5;
+        const int firstMemberIndex = 6;
+        const int memberStride = 77;
+        const int maximumSlots = 15;
+        const uint iconBase = 242000;
+
+        var builder = new StringBuilder()
+            .AppendLine("種別: 魔獣編成構造")
+            .AppendLine("モード: 読み取り専用（コールバック発火・メンバー増減・メモリ書き込みなし）")
+            .AppendLine("目的: 現在の奇盤、編成人数、スロット容量、メンバー順序の認識")
+            .AppendLine($"TerritoryType: {DalamudApi.ClientState.TerritoryType}")
+            .AppendLine();
+
+        var addonAddress = DalamudApi.GameGui.GetAddonByName("XBMPetParty", 1).Address;
+        var addon = (AtkUnitBase*)addonAddress;
+        if (addon == null || !addon->IsVisible || addon->AtkValues == null)
+        {
+            builder.AppendLine("XBMPetParty が存在しないか不可視です。挑戦前の魔獣編成ウィンドウを開いた状態にしてください。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var count = addon->AtkValuesCount > memberCountIndex
+            ? ReadDebugNumber(addon->AtkValues[memberCountIndex])
+            : uint.MaxValue;
+        builder.AppendLine($"Address=0x{addonAddress.ToInt64():X}")
+            .AppendLine($"AtkValuesCount={addon->AtkValuesCount}")
+            .AppendLine($"現在メンバー数候補 Value[5]={count}")
+            .AppendLine()
+            .AppendLine("ヘッダーフィールド Value[0..5]:");
+        for (var index = 0; index <= memberCountIndex && index < addon->AtkValuesCount; index++)
+        {
+            builder.AppendLine($"  Value[{index}]: {FormatAtkValue(addon->AtkValues[index])}");
+        }
+
+        builder.AppendLine().AppendLine("メンバーリスト:");
+        var parsedMembers = 0;
+        for (var slot = 0; slot < maximumSlots; slot++)
+        {
+            var start = firstMemberIndex + slot * memberStride;
+            if (start + memberStride > addon->AtkValuesCount)
+            {
+                break;
+            }
+
+            var level = ReadDebugText(addon->AtkValues[start]);
+            var icon = ReadDebugNumber(addon->AtkValues[start + 1]);
+            var name = ReadDebugText(addon->AtkValues[start + 3]);
+            if (icon is > iconBase and <= iconBase + 50)
+            {
+                parsedMembers++;
+                builder.AppendLine($"  スロット {slot + 1:00}: 図鑑 {icon - iconBase:00} | {name} | 獣レベル {level} | Icon={icon}");
+            }
+            else
+            {
+                builder.AppendLine($"  スロット {slot + 1:00}: 空または無効 | Icon={icon} | Name=\"{name}\" | Level=\"{level}\"");
+            }
+
+            builder.AppendLine($"    ブロック先頭: +0={FormatAtkValue(addon->AtkValues[start])} | +1={FormatAtkValue(addon->AtkValues[start + 1])} | +2={FormatAtkValue(addon->AtkValues[start + 2])} | +3={FormatAtkValue(addon->AtkValues[start + 3])}");
+            builder.AppendLine($"    ブロック末尾: +72={FormatAtkValue(addon->AtkValues[start + 72])} | +73={FormatAtkValue(addon->AtkValues[start + 73])} | +74={FormatAtkValue(addon->AtkValues[start + 74])} | +75={FormatAtkValue(addon->AtkValues[start + 75])} | +76={FormatAtkValue(addon->AtkValues[start + 76])}");
+        }
+
+        builder.AppendLine()
+            .AppendLine($"解析メンバー数={parsedMembers} | Value[5]={count}")
+            .AppendLine("フッターフィールド:");
+        var memberAreaEnd = firstMemberIndex + maximumSlots * memberStride;
+        for (var index = memberAreaEnd; index < addon->AtkValuesCount; index++)
+        {
+            builder.AppendLine($"  Value[{index}]: {FormatAtkValue(addon->AtkValues[index])}");
+        }
+
+        builder.AppendLine()
+            .AppendLine("取得説明: 第1盤、第2盤、第3盤、高段第1盤、高段第2盤の編成画面でそれぞれ取得し、画面表示の容量を確認してください。");
+        return builder.ToString().TrimEnd();
+    }
+
+    private static uint ReadDebugNumber(AtkValue value)
+        => value.TypeCode() switch
+        {
+            3 when value.Int >= 0 => (uint)value.Int,
+            4 or 5 => value.UInt,
+            8 or 10 when uint.TryParse(value.String.ToString(), out var parsed) => parsed,
+            _ => uint.MaxValue,
+        };
+
+    private static string ReadDebugText(AtkValue value)
+        => value.TypeCode() is 8 or 10 ? value.String.ToString() ?? string.Empty : string.Empty;
+
+    private static unsafe void AppendDetailProgressionProbe(StringBuilder builder, AgentModule* agentModule)
+    {
+        const int agentDumpSize = 0x400;
+        builder.AppendLine().AppendLine("魔獣詳細 XBM データ:");
+        var detailAddress = DalamudApi.GameGui.GetAddonByName("XBMBattleMonsterDetail", 1).Address;
+        var detail = (AtkUnitBase*)detailAddress;
+        if (detail == null || !detail->IsVisible || detail->AtkValues == null)
+        {
+            builder.AppendLine("XBMBattleMonsterDetail が存在しないか不可視です。ゲーム内の図鑑で対象魔獣の詳細を開いてから再試行してください。");
+        }
+        else
+        {
+            builder.AppendLine($"Detail Addon Address=0x{detailAddress.ToInt64():X}")
+                .AppendLine($"Detail AtkValuesCount={detail->AtkValuesCount}");
+            for (var index = 0; index < detail->AtkValuesCount; index++)
+            {
+                builder.AppendLine($"  DetailValue[{index}]: {FormatAtkValue(detail->AtkValues[index])}");
+            }
+        }
+
+        builder.AppendLine().AppendLine("Agent 499 候補整数（先頭 0x400 バイト）:");
+        var detailAgent = agentModule == null ? null : (byte*)agentModule->GetAgentByInternalId((AgentId)499);
+        if (detailAgent == null)
+        {
+            builder.AppendLine("Agent 499 が利用できません。");
+            return;
+        }
+
+        builder.AppendLine($"Agent Address=0x{(nint)detailAgent:X}");
+        for (var offset = 0; offset < agentDumpSize; offset += 16)
+        {
+            builder.Append($"  +0x{offset:X3}:");
+            for (var column = 0; column < 16; column += 4)
+            {
+                var value = *(uint*)(detailAgent + offset + column);
+                builder.Append($" {value,10}");
+            }
+            builder.AppendLine();
+        }
+    }
+
+    private static unsafe void AppendPetPartyProgressionProbe(StringBuilder builder, AgentModule* agentModule)
+    {
+        const int agentDumpSize = 0x800;
+        builder.AppendLine().AppendLine("魔獣編成 XBM データ:");
+        var partyAddress = DalamudApi.GameGui.GetAddonByName("XBMPetParty", 1).Address;
+        var party = (AtkUnitBase*)partyAddress;
+        if (party == null || !party->IsVisible || party->AtkValues == null)
+        {
+            builder.AppendLine("XBMPetParty が存在しないか不可視です。ゲーム内の魔獣編成画面を開いてから再試行してください。");
+        }
+        else
+        {
+            builder.AppendLine($"Party Addon Address=0x{partyAddress.ToInt64():X}")
+                .AppendLine($"Party AtkValuesCount={party->AtkValuesCount}");
+            for (var index = 0; index < party->AtkValuesCount; index++)
+            {
+                builder.AppendLine($"  PartyValue[{index}]: {FormatAtkValue(party->AtkValues[index])}");
+            }
+        }
+
+        builder.AppendLine().AppendLine("Agent 501 候補整数（先頭 0x800 バイト）:");
+        var partyAgent = agentModule == null ? null : (byte*)agentModule->GetAgentByInternalId((AgentId)501);
+        if (partyAgent == null)
+        {
+            builder.AppendLine("Agent 501 が利用できません。");
+            return;
+        }
+
+        builder.AppendLine($"Agent Address=0x{(nint)partyAgent:X}");
+        for (var offset = 0; offset < agentDumpSize; offset += 4)
+        {
+            var value = *(uint*)(partyAgent + offset);
+            if (value is 4 or 61 or 100
+                || (value >> 16) is 4 or 61 or 100
+                || (value & 0xFFFF) is 4 or 61 or 100)
+            {
+                builder.AppendLine($"  候補 +0x{offset:X3}: UInt={value} | High16={value >> 16} | Low16={value & 0xFFFF}");
+            }
+        }
+
+        builder.AppendLine("Agent 501 完全整数:");
+        for (var offset = 0; offset < agentDumpSize; offset += 16)
+        {
+            builder.Append($"  +0x{offset:X3}:");
+            for (var column = 0; column < 16; column += 4)
+            {
+                var value = *(uint*)(partyAgent + offset + column);
+                builder.Append($" {value,10}");
+            }
+            builder.AppendLine();
+        }
+    }
+
+    private static void AppendXbmAddonVisibility(StringBuilder builder)
+    {
+        builder.AppendLine().AppendLine("XBM Addon 状態:");
+        foreach (var addonName in XbmAddonNames())
+        {
+            try
+            {
+                var addon = DalamudApi.GameGui.GetAddonByName(addonName, 1);
+                builder.AppendLine(addon.IsNull
+                    ? $"  {addonName}: 存在しません"
+                    : $"  {addonName}: Visible={addon.IsVisible} | Ready={addon.IsReady} | AtkValuesCount={addon.AtkValuesCount} | Address=0x{addon.Address.ToInt64():X}");
+            }
+            catch (Exception ex)
+            {
+                builder.AppendLine($"  {addonName}: 読み取り失敗 {ex.GetType().Name}");
+            }
+        }
+    }
+
+    private static unsafe string FormatAtkValue(AtkValue value)
+    {
+        var typeCode = (int)value.Type & 0xF;
+        var text = typeCode is 8 or 10
+            ? (value.String.ToString() ?? string.Empty).Replace("\r", "\\r").Replace("\n", "\\n")
+            : string.Empty;
+        return typeCode switch
+        {
+            2 => $"Type={value.Type} Bool={value.Bool}",
+            3 => $"Type={value.Type} Int={value.Int}",
+            4 or 5 => $"Type={value.Type} UInt={value.UInt}",
+            8 or 10 => $"Type={value.Type} String=\"{text}\"",
+            _ => $"Type={value.Type} UInt={value.UInt}",
+        };
+    }
+
     public string FindRecommendedEquipmentIds()
     {
         var items = DalamudApi.DataManager.GetExcelSheet<Item>();
@@ -431,7 +809,7 @@ public sealed class BeastmasterDebugDataService
         })
         {
             builder.AppendLine($"[{plan.Name}]");
-            foreach (var equipment in plan.Entries.Where(entry => entry.Name != "装備なし" && entry.Name != "无装备"))
+            foreach (var equipment in plan.Entries.Where(entry => entry.Name != "装備なし"))
             {
                 var exactMatches = items
                     .Where(item => item.RowId != 0 && item.Name.ExtractText().Equals(equipment.Name, StringComparison.Ordinal))
@@ -1244,6 +1622,200 @@ public sealed class BeastmasterDebugDataService
             : manager->GetActionStatus(ActionType.Action, adjustedActionId, targetId);
         builder.AppendLine(
             $"{label}: Base={actionId} | Adjusted={adjustedActionId} | {GetActionNameById(adjustedActionId)} | Target={targetId} | Status={status}");
+    }
+
+    public unsafe string GetCrucibleItemList()
+    {
+        var builder = new StringBuilder()
+            .AppendLine("種別: 闘獣アイテム一覧")
+            .AppendLine("モード: 読み取り専用（コールバック発火・アイテム使用・メモリ書き込みなし）")
+            .AppendLine("目的: 現在の画面に存在するすべての闘獣アイテムの ID と名称を一覧表示")
+            .AppendLine($"TerritoryType: {DalamudApi.ClientState.TerritoryType}")
+            .AppendLine();
+
+        var addon = DalamudApi.GameGui.GetAddonByName("XBMContentsMainHUD", 1);
+        if (addon.IsNull || !addon.IsVisible)
+        {
+            builder.AppendLine("XBMContentsMainHUD が存在しないか不可視です。");
+            builder.AppendLine("ヒント: 闘獣練に入場し、クルーシブルアイテム画面を開いた状態にしてください。");
+            return builder.ToString().TrimEnd();
+        }
+
+        builder.AppendLine($"XBMContentsMainHUD Address=0x{addon.Address.ToInt64():X}");
+        builder.AppendLine($"  AtkValuesCount={addon.AtkValuesCount}");
+        builder.AppendLine();
+
+        var atkValues = addon.AtkValues.ToArray();
+        var itemCount = 0;
+        var itemIds = new HashSet<uint>();
+        var index = 9;
+        builder.AppendLine("クルーシブルアイテム一覧:");
+        while (index + 4 < atkValues.Length)
+        {
+            try
+            {
+                var exists = atkValues[index].GetValue()?.ToString() == "True";
+                var usable = atkValues[index + 1].GetValue()?.ToString() == "True";
+                var iconId = atkValues[index + 2].GetValue();
+                var itemIdRaw = atkValues[index + 3].GetValue();
+                var name = atkValues[index + 4].GetValue()?.ToString() ?? string.Empty;
+
+                if (itemIdRaw != null
+                    && uint.TryParse(itemIdRaw.ToString(), out var itemId)
+                    && itemId is >= 76 and <= 143
+                    && itemIds.Add(itemId))
+                {
+                    var status = exists ? (usable ? "使用可能" : "使用不可") : "存在しません";
+                    builder.AppendLine($"  [{itemId}] {name} | 状態={status} | アイコン={iconId}");
+                    itemCount++;
+                }
+            }
+            catch
+            {
+                // 無効なエントリをスキップ
+            }
+
+            index += 5;
+        }
+
+        if (itemCount == 0)
+        {
+            builder.AppendLine("  クルーシブルアイテムが見つかりませんでした。");
+            builder.AppendLine("ヒント: 闘獣練に入場し、クルーシブルアイテム画面を開いた状態にしてください。");
+        }
+        else
+        {
+            builder.AppendLine();
+            builder.AppendLine($"合計 {itemCount} 個のクルーシブルアイテムが見つかりました。");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    public unsafe string GetXbmModuleProbe()
+    {
+        const uint maximumDumpSize = 0x400;
+        const int structSize = 0xA8;
+        var builder = new StringBuilder()
+            .AppendLine("種別: 魔獣使い育成データモジュール探針")
+            .AppendLine("モード: 読み取り専用（メモリ書き込み・コールバック発火なし）")
+            .AppendLine("目的: 50種の魔獣のレベル・経験値常駐データ構造（XBMModule）の特定")
+            .AppendLine("取得方法: 魔獣図鑑または魔獣編成画面を開いた後に取得することを推奨。魔獣が経験値を獲得する前後にそれぞれ取得して差異を比較")
+            .AppendLine();
+
+        var module = XBMModule.Instance();
+        if (module == null)
+        {
+            builder.AppendLine("XBMModule が利用できません（未ログインまたはゲーム画面未読み込み）。");
+            return builder.ToString().TrimEnd();
+        }
+
+        builder.AppendLine($"XBMModule Address=0x{(nint)module:X}")
+            .AppendLine($"CharacterContentId={module->CharacterContentId}")
+            .AppendLine($"FileName=\"{module->FileNameString}\"")
+            .AppendLine($"TempDataPtr=0x{module->TempDataPtr:X}")
+            .AppendLine($"TempDataBytesWritten=0x{module->TempDataBytesWritten:X} ({module->TempDataBytesWritten})")
+            .AppendLine($"GetDataSize()={module->GetDataSize()} | GetFileSize()={module->GetFileSize()} | GetFileVersion()={module->GetFileVersion()} | GetFileType()=0x{module->GetFileType():X}")
+            .AppendLine($"HasChanges={module->HasChanges} | IsSavePending={module->IsSavePending} | IsVirtual={module->IsVirtual}");
+
+        var structBytes = (byte*)module;
+        builder.AppendLine().AppendLine($"XBMModule 構造メモリ（{structSize} バイト、4 バイト整数ビュー）:");
+        for (var offset = 0; offset < structSize; offset += 16)
+        {
+            builder.Append($"  +0x{offset:X2}:");
+            for (var column = 0; column < 16 && offset + column + 3 < structSize; column += 4)
+            {
+                var value = *(uint*)(structBytes + offset + column);
+                builder.Append($" {value,10}");
+            }
+            builder.AppendLine();
+        }
+
+        builder.AppendLine().AppendLine($"XBMModule 構造メモリ（{structSize} バイト、バイトビュー）:");
+        for (var offset = 0; offset < structSize; offset += 16)
+        {
+            builder.Append($"  +0x{offset:X2}:");
+            for (var column = 0; column < 16 && offset + column < structSize; column++)
+            {
+                builder.Append($" {structBytes[offset + column]:X2}");
+            }
+            builder.AppendLine();
+        }
+
+        AppendPointerDump(builder, structBytes, 0x48, "構造 +0x48 ポインタ");
+        AppendPointerDump(builder, structBytes, 0x58, "構造 +0x58 ポインタ");
+
+        var dataPtr = module->TempDataPtr;
+        var dataSize = module->TempDataBytesWritten;
+        if (dataPtr == 0 || dataSize == 0)
+        {
+            builder.AppendLine().AppendLine("TempDataPtr が空です: 育成データがまだ読み込まれていません。");
+            builder.AppendLine("ゲーム内で魔獣図鑑（/魔獣図鑑）または魔獣編成ウィンドウを開き、データを読み込ませてから再取得してください。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var dumpSize = (int)Math.Min(dataSize, maximumDumpSize);
+        var bytes = (byte*)dataPtr;
+        builder.AppendLine().AppendLine($"TempDataPtr バッファ 4 バイト整数ビュー（先頭 {dumpSize}/{dataSize} バイト）:");
+        for (var offset = 0; offset + 3 < dumpSize; offset += 16)
+        {
+            builder.Append($"  +0x{offset:X3}:");
+            for (var column = 0; column < 16 && offset + column + 3 < dumpSize; column += 4)
+            {
+                var value = *(uint*)(bytes + offset + column);
+                builder.Append($" {value,10}");
+            }
+            builder.AppendLine();
+        }
+
+        builder.AppendLine().AppendLine($"TempDataPtr バッファ バイトビュー（先頭 {dumpSize}/{dataSize} バイト）:");
+        for (var offset = 0; offset < dumpSize; offset += 16)
+        {
+            builder.Append($"  +0x{offset:X3}:");
+            for (var column = 0; column < 16 && offset + column < dumpSize; column++)
+            {
+                builder.Append($" {bytes[offset + column]:X2}");
+            }
+            builder.AppendLine();
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private static unsafe void AppendPointerDump(StringBuilder builder, byte* basePointer, int offset, string label)
+    {
+        const int pointerDumpSize = 0x100;
+        var pointer = *(nint*)(basePointer + offset);
+        builder.AppendLine().AppendLine($"{label}=0x{pointer:X}");
+        if (pointer == 0)
+        {
+            builder.AppendLine("  ポインタが空です。");
+            return;
+        }
+
+        var bytes = (byte*)pointer;
+        builder.AppendLine($"  4 バイト整数ビュー（{pointerDumpSize} バイト）:");
+        for (var i = 0; i < pointerDumpSize; i += 16)
+        {
+            builder.Append($"    +0x{i:X3}:");
+            for (var column = 0; column < 16; column += 4)
+            {
+                var value = *(uint*)(bytes + i + column);
+                builder.Append($" {value,10}");
+            }
+            builder.AppendLine();
+        }
+
+        builder.AppendLine($"  バイトビュー（{pointerDumpSize} バイト）:");
+        for (var i = 0; i < pointerDumpSize; i += 16)
+        {
+            builder.Append($"    +0x{i:X3}:");
+            for (var column = 0; column < 16; column++)
+            {
+                builder.Append($" {bytes[i + column]:X2}");
+            }
+            builder.AppendLine();
+        }
     }
 
     private static string JoinLines(params string[] lines)
