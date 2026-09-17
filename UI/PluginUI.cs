@@ -80,6 +80,7 @@ public sealed class PluginUI
     private string ruleImportStatus = string.Empty;
     private string partyPresetStatus = string.Empty;
     private bool arenaTabSelectionInitialized;
+    private bool wasInAchievementsTab;
 
     public PluginUI(
         BeastmasterConfiguration configuration,
@@ -736,6 +737,13 @@ public sealed class PluginUI
         DrawCombinationStep("三号呼笛でクーシーを召喚、", false, "を使用して通常攻撃。");
 
         ImGui.Separator();
+        ImGui.Text("昆虫PT · 特一盤 高速周回");
+        ImGui.TextColored(new Vector4(0.95f, 0.82f, 0.25f, 1f), "推奨構成：マンティス ＋ ハミングバード ＋ ホーネット");
+        DrawCombinationStep("一号呼笛でマンティスを召喚、物理被ダメージ上昇（はなつ）付与後に", true, "を使用。");
+        DrawCombinationStep("二号呼笛でハミングバードを召喚、「はなつ」で単体攻撃後に", true, "を使用。");
+        DrawCombinationStep("三号呼笛でホーネットを召喚、BOSS の HP が 25% 未満になったら", false, "を使用。");
+
+        ImGui.Separator();
         ImGui.Text("水属性PT · 参考構成");
         ImGui.TextColored(new Vector4(0.35f, 0.75f, 1f, 1f), "サラマンダー ＋ メガロクラブ ＋ スニッパー");
         ImGui.TextWrapped("サラマンダーとメガロクラブで魔法被ダメージ上昇および水属性被ダメージ上昇を付与し、3番手のスニッパーで大ダメージを狙う構成です。");
@@ -1220,43 +1228,36 @@ public sealed class PluginUI
             configuration.Save();
         }
 
-        var conditionType = (int)rule.ConditionType;
+        rule.EnsureConditions();
+        var joinMode = (int)rule.ConditionJoinMode;
         ImGui.SetNextItemWidth(190f);
-        if (ImGui.Combo("判定種別", ref conditionType, "自身のバフ\0対象のバフ\0DataIDのバフ\0DataIDの詠唱\0対象の詠唱\0対象のDataID\0"))
+        if (ImGui.Combo("条件関係", ref joinMode, "すべて満たす（AND）\0いずれかを満たす（OR）\0"))
         {
-            rule.ConditionType = (BeastmasterRuleConditionType)conditionType;
+            rule.ConditionJoinMode = (BeastmasterRuleConditionJoinMode)joinMode;
             configuration.Save();
         }
-        if (rule.IsStatusRule)
+
+        for (var conditionIndex = 0; conditionIndex < rule.Conditions.Count; conditionIndex++)
         {
-            var statusCondition = (int)rule.StatusCondition;
-            ImGui.SetNextItemWidth(190f);
-            if (ImGui.Combo("バフ条件", ref statusCondition, "付与中\0未付与\0"))
+            ImGui.Separator();
+            ImGui.Text($"条件 {conditionIndex + 1}");
+            DrawRuleConditionFields(rule, rule.Conditions[conditionIndex], conditionIndex);
+            if (rule.Conditions.Count > 1 && ImGui.Button($"条件削除##rule-condition-delete-{conditionIndex}"))
             {
-                rule.StatusCondition = (BeastmasterRuleStatusCondition)statusCondition;
+                rule.Conditions.RemoveAt(conditionIndex);
+                rule.SyncLegacyFieldsFromFirstCondition();
                 configuration.Save();
+                break;
             }
         }
-        if (rule.RequiresDataId)
+
+        ImGui.BeginDisabled(rule.Conditions.Count >= 10);
+        if (ImGui.Button("条件追加"))
         {
-            var dataId = (int)Math.Min(rule.DataId, int.MaxValue);
-            ImGui.SetNextItemWidth(190f);
-            if (ImGui.InputInt("DataID", ref dataId, 1, 100))
-            {
-                rule.DataId = (uint)Math.Max(0, dataId);
-                configuration.Save();
-            }
+            rule.Conditions.Add(new BeastmasterRuleCondition());
+            configuration.Save();
         }
-        var conditionId = (int)Math.Min(rule.ConditionId, int.MaxValue);
-        if (!rule.IsTargetDataIdRule)
-        {
-            ImGui.SetNextItemWidth(190f);
-            if (ImGui.InputInt(rule.IsStatusRule ? "バフID" : "詠唱アクションID", ref conditionId, 1, 100))
-            {
-                rule.ConditionId = (uint)Math.Max(0, conditionId);
-                configuration.Save();
-            }
-        }
+        ImGui.EndDisabled();
 
         var actionType = (int)rule.ActionType;
         ImGui.SetNextItemWidth(120f);
@@ -1270,7 +1271,7 @@ public sealed class PluginUI
         {
             var itemType = (int)rule.CrucibleItemType;
             ImGui.SetNextItemWidth(190f);
-            if (ImGui.Combo("クルーシブルアイテム", ref itemType, "魔獣回復薬（3→2→1優先）\0各種牙\0"))
+            if (ImGui.Combo("クルーシブルアイテム", ref itemType, "回復類アイテム\0各種の牙\0回避の書\0反射の書\0時の砂\0魔獣剛力薬\0吸血鬼の牙\0"))
             {
                 rule.CrucibleItemType = (BeastmasterCrucibleItemType)itemType;
                 configuration.Save();
@@ -1294,6 +1295,75 @@ public sealed class PluginUI
         ImGui.TextDisabled("対象指定アクションは現在ターゲットしている敵に実行されます（DataIDはトリガー判定のみ）。実行不可時はACRへ戻ります。");
     }
 
+    private void DrawRuleConditionFields(BeastmasterRuleDefinition rule, BeastmasterRuleCondition condition, int index)
+    {
+        var type = (int)condition.Type;
+        ImGui.SetNextItemWidth(190f);
+        if (ImGui.Combo($"判定種別##condition-{index}", ref type, "自身バフ\0ターゲットバフ\0DataIDバフ\0DataID詠唱\0ターゲット詠唱\0ターゲットDataID\0自身HP\0ターゲットHP\0ターゲットがBOSS（IsBoss）\0"))
+        {
+            condition.Type = (BeastmasterRuleConditionType)type;
+            rule.SyncLegacyFieldsFromFirstCondition();
+            configuration.Save();
+        }
+
+        if (condition.IsStatusRule)
+        {
+            var statusCondition = (int)condition.StatusCondition;
+            ImGui.SetNextItemWidth(190f);
+            if (ImGui.Combo($"バフ条件##condition-{index}", ref statusCondition, "付与中\0未付与\0"))
+            {
+                condition.StatusCondition = (BeastmasterRuleStatusCondition)statusCondition;
+                rule.SyncLegacyFieldsFromFirstCondition();
+                configuration.Save();
+            }
+        }
+
+        if (condition.RequiresDataId)
+        {
+            var dataId = (int)Math.Min(condition.DataId, int.MaxValue);
+            ImGui.SetNextItemWidth(190f);
+            if (ImGui.InputInt($"DataID##condition-{index}", ref dataId, 1, 100))
+            {
+                condition.DataId = (uint)Math.Max(0, dataId);
+                rule.SyncLegacyFieldsFromFirstCondition();
+                configuration.Save();
+            }
+        }
+
+        if (condition.IsHealthRule)
+        {
+            var hpCondition = (int)condition.HpCondition;
+            ImGui.SetNextItemWidth(190f);
+            if (ImGui.Combo($"HP条件##condition-{index}", ref hpCondition, "より大きい（>）\0より小さい（<）\0"))
+            {
+                condition.HpCondition = (BeastmasterRuleHpCondition)hpCondition;
+                rule.SyncLegacyFieldsFromFirstCondition();
+                configuration.Save();
+            }
+
+            var threshold = condition.HpThreshold;
+            ImGui.SetNextItemWidth(190f);
+            if (ImGui.InputFloat($"HP閾値##condition-{index}", ref threshold, 0f, 0f, "%.0f%%"))
+            {
+                condition.HpThreshold = Math.Clamp(threshold, 1f, 100f);
+                rule.SyncLegacyFieldsFromFirstCondition();
+                configuration.Save();
+            }
+        }
+        else if (condition.Type is not (BeastmasterRuleConditionType.TargetDataId or BeastmasterRuleConditionType.TargetIsBoss))
+        {
+            var conditionId = (int)Math.Min(condition.ConditionId, int.MaxValue);
+            ImGui.SetNextItemWidth(190f);
+            var label = condition.IsStatusRule ? "バフID" : "詠唱アクションID";
+            if (ImGui.InputInt($"{label}##condition-{index}", ref conditionId, 1, 100))
+            {
+                condition.ConditionId = (uint)Math.Max(0, conditionId);
+                rule.SyncLegacyFieldsFromFirstCondition();
+                configuration.Save();
+            }
+        }
+    }
+
     private static BeastmasterRuleDefinition CloneRule(BeastmasterRuleDefinition source)
         => new()
         {
@@ -1301,8 +1371,20 @@ public sealed class PluginUI
             Name = source.Name + " 複製",
             ConditionType = source.ConditionType,
             StatusCondition = source.StatusCondition,
+            ConditionJoinMode = source.ConditionJoinMode,
+            Conditions = source.Conditions.Select(condition => new BeastmasterRuleCondition
+            {
+                Type = condition.Type,
+                StatusCondition = condition.StatusCondition,
+                DataId = condition.DataId,
+                ConditionId = condition.ConditionId,
+                HpCondition = condition.HpCondition,
+                HpThreshold = condition.HpThreshold,
+            }).ToList(),
             DataId = source.DataId,
             ConditionId = source.ConditionId,
+            HpCondition = source.HpCondition,
+            HpThreshold = source.HpThreshold,
             ActionType = source.ActionType,
             ActionId = source.ActionId,
             CrucibleItemType = source.CrucibleItemType,
@@ -1311,25 +1393,40 @@ public sealed class PluginUI
 
     private static string GetRuleSummary(BeastmasterRuleDefinition rule)
     {
-        var actor = rule.ConditionType switch
+        rule.EnsureConditions();
+        var condition = string.Join(
+            rule.ConditionJoinMode == BeastmasterRuleConditionJoinMode.All ? " AND " : " OR ",
+            rule.Conditions.Select(GetRuleConditionSummary));
+        if (rule.ActionType == BeastmasterRuleActionType.CrucibleItem)
+            return $"{condition} -> アイテム {BeastmasterRuleActions.GetCrucibleItemTypeName(rule.CrucibleItemType)}";
+        var actionName = BeastmasterRuleActions.GetActionName(rule.ActionId);
+        return $"{condition} -> {actionName}";
+    }
+
+    private static string GetRuleConditionSummary(BeastmasterRuleCondition condition)
+    {
+        var actor = condition.Type switch
         {
             BeastmasterRuleConditionType.SelfStatus => "自身",
             BeastmasterRuleConditionType.TargetStatus => "対象",
-            BeastmasterRuleConditionType.DataIdStatus => $"DataID {rule.DataId}",
-            BeastmasterRuleConditionType.DataIdCast => $"DataID {rule.DataId}",
+            BeastmasterRuleConditionType.DataIdStatus => $"DataID {condition.DataId}",
+            BeastmasterRuleConditionType.DataIdCast => $"DataID {condition.DataId}",
             BeastmasterRuleConditionType.TargetCast => "対象",
-            BeastmasterRuleConditionType.TargetDataId => $"対象DataID {rule.DataId}",
+            BeastmasterRuleConditionType.TargetDataId => $"対象DataID {condition.DataId}",
+            BeastmasterRuleConditionType.SelfHp => "自身HP",
+            BeastmasterRuleConditionType.TargetHp => "対象HP",
+            BeastmasterRuleConditionType.TargetIsBoss => "対象がBOSS",
             _ => "未知",
         };
-        var condition = rule.IsStatusRule
-            ? $"{(rule.StatusCondition == BeastmasterRuleStatusCondition.Present ? "付与中" : "未付与")} バフ {rule.ConditionId}"
-            : rule.IsTargetDataIdRule
-                ? ""
-                : $"詠唱 {rule.ConditionId}";
-        if (rule.ActionType == BeastmasterRuleActionType.CrucibleItem)
-            return $"{actor}{condition} -> アイテム {BeastmasterRuleActions.GetCrucibleItemTypeName(rule.CrucibleItemType)}";
-        var actionName = BeastmasterRuleActions.GetActionName(rule.ActionId);
-        return $"{actor}{condition} -> {actionName}";
+        if (condition.IsStatusRule)
+            return $"{actor}{(condition.StatusCondition == BeastmasterRuleStatusCondition.Present ? "付与中" : "未付与")} バフ {condition.ConditionId}";
+        if (condition.Type == BeastmasterRuleConditionType.TargetDataId)
+            return actor;
+        if (condition.Type == BeastmasterRuleConditionType.TargetIsBoss)
+            return "対象最大HP > 自身最大HP × 5";
+        if (condition.IsHealthRule)
+            return $"{actor} {(condition.HpCondition == BeastmasterRuleHpCondition.Above ? ">" : "<")} {condition.HpThreshold:0.#}%";
+        return $"{actor}詠唱 {condition.ConditionId}";
     }
 
     private void DrawQuests()
@@ -1980,6 +2077,7 @@ public sealed class PluginUI
         DrawBeastArenaTab("challenge-note", "攻略手帳", DrawBeastArenaChallengeNote);
         ImGui.EndTabBar();
         arenaTabSelectionInitialized = true;
+        wasInAchievementsTab = configuration.SelectedArenaTab == "achievements";
     }
 
     private void DrawBeastArenaGuideTab()
@@ -2009,27 +2107,27 @@ public sealed class PluginUI
 
     private void DrawBeastArenaAchievements()
     {
-        ImGui.Spacing();
-        ImGui.Text("闘獣アチーブメント");
-        ImGui.SameLine();
-        ImGui.TextDisabled("キャラクター単位で保存されます。同期をクリックすると現在の達成状況を読み込みます。");
-        ImGui.Spacing();
-
-        if (ImGui.Button("現在のアチーブメント状況を同期"))
+        if (!wasInAchievementsTab)
         {
             achievementSyncService.RequestSync();
         }
 
+        ImGui.Spacing();
+        ImGui.Text("闘獣アチーブメント");
+        ImGui.SameLine();
+        ImGui.TextDisabled("キャラクター単位で保存。タブを開くと自動同期します。");
+        ImGui.Spacing();
+
         if (!string.IsNullOrWhiteSpace(achievementSyncService.Diagnostic))
         {
-            ImGui.SameLine();
             if (ImGui.Button("同期診断ログをコピー"))
             {
                 ImGui.SetClipboardText(achievementSyncService.Diagnostic);
             }
+
+            ImGui.SameLine();
         }
 
-        ImGui.SameLine();
         ImGui.TextDisabled(achievementSyncService.Status);
         ImGui.Separator();
 
@@ -2048,6 +2146,18 @@ public sealed class PluginUI
         }
 
         ImGui.ProgressBar((float)completedCount / total, new Vector2(-1f, 0f), $"{completedCount}/{total}");
+
+        ImGui.Spacing();
+        var hideCompletedAchievements = configuration.HideCompletedAchievements;
+        if (ImGui.Checkbox("達成済みを非表示", ref hideCompletedAchievements))
+        {
+            configuration.HideCompletedAchievements = hideCompletedAchievements;
+            configuration.Save();
+        }
+
+        ImGui.Spacing();
+        ImGui.TextColored(new Vector4(1f, 0.82f, 0.25f, 1f), "レジェンド級スコアライン");
+        ImGui.TextDisabled(string.Join(" · ", BeastmasterAchievementCatalog.LegendaryPoints.Select(point => $"{point.Arena} {point.Points}")));
         ImGui.Spacing();
 
         foreach (var group in BeastmasterAchievementCatalog.Groups)
@@ -2057,6 +2167,12 @@ public sealed class PluginUI
 
             foreach (var achievementId in group.AchievementIds)
             {
+                if (configuration.HideCompletedAchievements
+                    && progressService.IsAchievementCompleted(achievementId))
+                {
+                    continue;
+                }
+
                 if (!achievementSheet.TryGetRow((uint)achievementId, out var achievement))
                 {
                     ImGui.TextDisabled($"#{achievementId} アチーブメントデータが見つかりません");
@@ -2153,14 +2269,14 @@ public sealed class PluginUI
 
         DrawGuideFloor("第一盤", null);
         DrawGuideFloor("第二盤", null);
-        DrawGuideFloor("第三盤", BeastmasterArenaGuide.Round3);
+        DrawGuideFloor("第三盤", BeastmasterArenaGuide.Round3, BeastmasterArenaGuide.Round3Author);
         DrawGuideFloor("特一盤", null);
         DrawGuideFloor("特二盤", null);
 
         ImGui.EndTabBar();
     }
 
-    private static void DrawGuideFloor(string label, IReadOnlyList<BeastmasterArenaGuideRound>? rounds)
+    private static void DrawGuideFloor(string label, IReadOnlyList<BeastmasterArenaGuideRound>? rounds, string? author = null)
     {
         if (!ImGui.BeginTabItem(label))
         {
@@ -2174,6 +2290,11 @@ public sealed class PluginUI
         else
         {
             ImGui.TextDisabled("黄色：BOSS、灰色：雑魚敵、赤色：重要アクション");
+            if (!string.IsNullOrWhiteSpace(author))
+            {
+                ImGui.SameLine();
+                ImGui.TextDisabled($"作者：{author}");
+            }
             ImGui.Spacing();
             foreach (var round in rounds)
             {
@@ -2854,7 +2975,7 @@ public sealed class PluginUI
         }
         if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip("闘獣塔での戦闘中のみ有効。自身のHPが閾値未満になった際、3級 → 2級 → 1級の優先度で魔獣回復薬を使用します（デフォルトOFF）。");
+            ImGui.SetTooltip("闘獣練での戦闘中のみ有効。自身のHPが閾値未満の際、魔獣回復薬セット → 4/3/2/1級魔獣回復薬 → 3/2/1級魔獣薬粉 → 魔獣吸血薬 → 吸血鬼の牙の優先度で使用します。吸血鬼の牙は敵対ターゲットが必要で、使用成功後2秒の間隔を共有します（デフォルトOFF）。");
         }
         if (configuration.AutoRecoveryItemEnabled)
         {
@@ -2881,6 +3002,30 @@ public sealed class PluginUI
         {
             configuration.AutoReleaseEnabled = releaseEnabled;
             configuration.Save();
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip("「はなつ」のマスター切り替え。1、2、3笛の個別切り替えとターゲットHP閾値は下部で設定します。");
+        }
+        if (!compactFinalStrike)
+        {
+            DrawReleaseSettings("1笛", nameof(configuration.AutoReleaseWhistleOneEnabled), configuration.AutoReleaseWhistleOneEnabled,
+                nameof(configuration.AutoReleaseWhistleOneTargetHpThreshold), configuration.AutoReleaseWhistleOneTargetHpThreshold);
+            DrawReleaseSettings("2笛", nameof(configuration.AutoReleaseWhistleTwoEnabled), configuration.AutoReleaseWhistleTwoEnabled,
+                nameof(configuration.AutoReleaseWhistleTwoTargetHpThreshold), configuration.AutoReleaseWhistleTwoTargetHpThreshold);
+            DrawReleaseSettings("3笛", nameof(configuration.AutoReleaseWhistleThreeEnabled), configuration.AutoReleaseWhistleThreeEnabled,
+                nameof(configuration.AutoReleaseWhistleThreeTargetHpThreshold), configuration.AutoReleaseWhistleThreeTargetHpThreshold);
+
+            var releaseBossOnly = configuration.AutoReleaseBossOnly;
+            if (ImGui.Checkbox("はなつ · BOSSのみ", ref releaseBossOnly))
+            {
+                configuration.AutoReleaseBossOnly = releaseBossOnly;
+                configuration.Save();
+            }
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip("有効時、ターゲット最大HPが自身の最大HP×5より大きい場合のみ、現在の笛で「はなつ」を実行します（デフォルトOFF）。");
+            }
         }
 
         ImGui.Unindent();
@@ -3148,6 +3293,66 @@ public sealed class PluginUI
                 break;
             case nameof(configuration.AutoFinalStrikeWhistleThreeHpThreshold):
                 configuration.AutoFinalStrikeWhistleThreeHpThreshold = clamped;
+                break;
+        }
+        configuration.Save();
+    }
+
+    private void DrawReleaseSettings(
+        string label,
+        string enabledProperty,
+        bool enabled,
+        string thresholdProperty,
+        float threshold)
+    {
+        if (ImGui.Checkbox($"はなつ · {label}##{enabledProperty}", ref enabled))
+        {
+            SetReleaseEnabled(enabledProperty, enabled);
+        }
+
+        ImGui.SameLine();
+        threshold = Math.Clamp(threshold, 1f, 100f);
+        ImGui.SetNextItemWidth(100f);
+        if (ImGui.InputFloat($"##{thresholdProperty}", ref threshold, 1f, 5f, "%.0f%%"))
+        {
+            SetReleaseThreshold(thresholdProperty, threshold);
+        }
+        if (ImGui.IsItemHovered())
+        {
+            ImGui.SetTooltip($"ターゲットHPがこの閾値以下のときに {label}の「はなつ」を許可します（範囲: 1%〜100%）。");
+        }
+    }
+
+    private void SetReleaseEnabled(string propertyName, bool value)
+    {
+        switch (propertyName)
+        {
+            case nameof(configuration.AutoReleaseWhistleOneEnabled):
+                configuration.AutoReleaseWhistleOneEnabled = value;
+                break;
+            case nameof(configuration.AutoReleaseWhistleTwoEnabled):
+                configuration.AutoReleaseWhistleTwoEnabled = value;
+                break;
+            case nameof(configuration.AutoReleaseWhistleThreeEnabled):
+                configuration.AutoReleaseWhistleThreeEnabled = value;
+                break;
+        }
+        configuration.Save();
+    }
+
+    private void SetReleaseThreshold(string propertyName, float value)
+    {
+        value = Math.Clamp(value, 1f, 100f);
+        switch (propertyName)
+        {
+            case nameof(configuration.AutoReleaseWhistleOneTargetHpThreshold):
+                configuration.AutoReleaseWhistleOneTargetHpThreshold = value;
+                break;
+            case nameof(configuration.AutoReleaseWhistleTwoTargetHpThreshold):
+                configuration.AutoReleaseWhistleTwoTargetHpThreshold = value;
+                break;
+            case nameof(configuration.AutoReleaseWhistleThreeTargetHpThreshold):
+                configuration.AutoReleaseWhistleThreeTargetHpThreshold = value;
                 break;
         }
         configuration.Save();

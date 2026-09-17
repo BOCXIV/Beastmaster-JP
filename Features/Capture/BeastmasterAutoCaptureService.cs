@@ -571,10 +571,17 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             && DalamudApi.Condition[ConditionFlag.InCombat]
             && IsArenaTerritory(DalamudApi.ClientState.TerritoryType)
             && playerHpPercent < configuration.AutoRecoveryItemHpThreshold
-            && crucibleItemService.TryUseBestRecoveryItem(player, now, out var recoveryItemId))
+            && crucibleItemService.TryUseBestRecoveryItem(player, target, now, out var recoveryItemId))
         {
             StatusText = "自動で回復薬を使用中...";
-            NextActionName = $"{recoveryItemId - 75}級魔獣回復薬";
+            NextActionName = recoveryItemId switch
+            {
+                140 => "魔獣回復薬セット",
+                134 => "吸血鬼の牙",
+                135 => "魔獣吸血薬",
+                80 or 81 or 82 => $"{recoveryItemId - 79}級魔獣薬粉",
+                _ => $"{recoveryItemId - 75}級魔獣回復薬",
+            };
             NextActionReason = $"自身のHP {playerHpPercent:0.#}% が閾値 {configuration.AutoRecoveryItemHpThreshold:0.#}% 未満";
             nextActionUtc = now.AddMilliseconds(700);
             RecordBattleLog($"アクションをリクエストしました: {NextActionName}（XBMItem {recoveryItemId}）");
@@ -1304,6 +1311,32 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         IBattleChara target,
         DateTime now)
     {
+        if (!TryGetReleaseSettings(gauge.WhistleIndex, out var enabled, out var targetHpThreshold))
+        {
+            ReportAutoOutputDiagnostic("はなつ", $"現在の呼び笛 {gauge.WhistleIndex} に対応する 1/2/3 笛設定がありません", "whistle");
+            return false;
+        }
+
+        if (!enabled)
+        {
+            ReportAutoOutputDiagnostic("はなつ", $"現在の {gauge.WhistleIndex} 笛の個別スイッチが有効ではありません", "disabled");
+            return false;
+        }
+
+        var targetHpPercent = target.MaxHp == 0 ? 100f : target.CurrentHp * 100f / target.MaxHp;
+        if (configuration.AutoReleaseBossOnly
+            && DalamudApi.ObjectTable.LocalPlayer is IBattleChara player
+            && (player.MaxHp == 0 || target.MaxHp <= (double)player.MaxHp * 5d))
+        {
+            ReportAutoOutputDiagnostic("はなつ", $"ターゲットが BOSS と判定されませんでした（ターゲット最大 HP {target.MaxHp}、自身最大 HP {player.MaxHp} × 5）", "boss");
+            return false;
+        }
+        if (targetHpPercent > targetHpThreshold)
+        {
+            ReportAutoOutputDiagnostic("はなつ", $"ターゲットHP {targetHpPercent:0.#}% が現在の呼び笛閾値 {targetHpThreshold:0.#}% を超えています", "hp");
+            return false;
+        }
+
         if (now < nextReleaseAttemptUtc)
         {
             return false;
@@ -1343,7 +1376,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
         StatusText = "自動「はなつ」実行中...";
         NextActionName = availability.ActionName;
-        NextActionReason = "「はなつ」リキャスト完了";
+        NextActionReason = $"{gauge.WhistleIndex} 笛 ターゲットHP {targetHpPercent:0.#}% が閾値 {targetHpThreshold:0.#}% に到達";
         if (!actionManager->UseAction(ActionType.Action, availability.ActionId, target.GameObjectId))
         {
             NextActionReason = "「はなつ」実行要求失敗";
@@ -1421,8 +1454,16 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
         if (configuration.AutoFinalStrikeWaitForRelease)
         {
-            var releaseActionId = actionManager->GetAdjustedActionId(BeastmasterReleaseBaseActionId);
-            var releaseReady = releaseActionId != 0
+            var shouldWaitForRelease = TryGetReleaseSettings(gauge.WhistleIndex, out var releaseEnabled, out var releaseThreshold)
+                && releaseEnabled
+                && DalamudApi.TargetManager.Target is IBattleChara hpTarget
+                && hpTarget.MaxHp > 0
+                && hpTarget.CurrentHp * 100f / hpTarget.MaxHp <= releaseThreshold;
+            var releaseActionId = shouldWaitForRelease
+                ? actionManager->GetAdjustedActionId(BeastmasterReleaseBaseActionId)
+                : 0u;
+            var releaseReady = shouldWaitForRelease
+                && releaseActionId != 0
                 && actionManager->GetActionStatus(ActionType.Action, releaseActionId, targetId) == 0;
             if (releaseReady)
             {
@@ -1479,6 +1520,18 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             1 => (configuration.AutoFinalStrikeWhistleOneEnabled, configuration.AutoFinalStrikeWhistleOneHpThreshold),
             2 => (configuration.AutoFinalStrikeWhistleTwoEnabled, configuration.AutoFinalStrikeWhistleTwoHpThreshold),
             3 => (configuration.AutoFinalStrikeWhistleThreeEnabled, configuration.AutoFinalStrikeWhistleThreeHpThreshold),
+            _ => (false, 0f),
+        };
+        return whistleIndex is >= 1 and <= 3;
+    }
+
+    private bool TryGetReleaseSettings(byte whistleIndex, out bool enabled, out float targetHpThreshold)
+    {
+        (enabled, targetHpThreshold) = whistleIndex switch
+        {
+            1 => (configuration.AutoReleaseWhistleOneEnabled, configuration.AutoReleaseWhistleOneTargetHpThreshold),
+            2 => (configuration.AutoReleaseWhistleTwoEnabled, configuration.AutoReleaseWhistleTwoTargetHpThreshold),
+            3 => (configuration.AutoReleaseWhistleThreeEnabled, configuration.AutoReleaseWhistleThreeTargetHpThreshold),
             _ => (false, 0f),
         };
         return whistleIndex is >= 1 and <= 3;

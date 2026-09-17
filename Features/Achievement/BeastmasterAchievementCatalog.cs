@@ -20,5 +20,14 @@ public static class BeastmasterAchievementCatalog
     ];
 
     public static int AchievementCount => Groups.Sum(group => group.AchievementIds.Length);
+
+    public static IReadOnlyList<(string Arena, int Points)> LegendaryPoints { get; } =
+    [
+        ("第一盤", 17500),
+        ("第二盤", 17500),
+        ("第三盤", 17500),
+        ("特一盤", 18750),
+        ("特二盤", 18500),
+    ];
 }
 

@@ -39,6 +39,7 @@ public sealed class BeastmasterRuleService
 
         var territoryId = (ushort)Math.Clamp(DalamudApi.ClientState.TerritoryType, 0u, ushort.MaxValue);
         var validRuleCount = 0;
+        var matchedRuleCount = 0;
         foreach (var ruleSet in configuration.RuleSets)
         {
             if (!ruleSet.Enabled || !ruleSet.AppliesTo(territoryId))
@@ -56,20 +57,29 @@ public sealed class BeastmasterRuleService
 
                 validRuleCount++;
 
-                if (!Matches(rule, player, target, out var matchReason))
+                if (!MatchesRule(rule, player, target, out var matchReason))
                 {
                     continue;
                 }
 
-                return TryExecute(actionManager, ruleSet, rule, ruleIndex, player, target, matchReason, now);
+                matchedRuleCount++;
+                if (TryExecute(actionManager, ruleSet, rule, ruleIndex, player, target, matchReason, now))
+                {
+                    return true;
+                }
             }
         }
 
         if (configuration.RuleDiagnosticsEnabled)
         {
+            var targetSnapshot = target == null
+                ? "現在有効なターゲットなし"
+                : $"現在ターゲット BaseId={target.BaseId}、HP={target.CurrentHp}/{target.MaxHp}";
             var message = validRuleCount == 0
                 ? $"ルール診断：現在のエリア {territoryId} に実行可能な有効ルールがありません"
-                : $"ルール診断：{validRuleCount} 件のルールをチェックしましたが、条件に一致するものはありませんでした";
+                : matchedRuleCount == 0
+                    ? $"ルール診断：{validRuleCount} 件のルールをチェックしましたが、条件に一致するものはありませんでした；{targetSnapshot}"
+                    : $"ルール診断：{matchedRuleCount}/{validRuleCount} 件のルールが一致しましたがすべて実行に失敗し、通常ACRへフォールバック；{targetSnapshot}";
             RecordDiagnostic(message);
             if (validRuleCount > 0)
             {
@@ -160,7 +170,9 @@ public sealed class BeastmasterRuleService
         string matchReason,
         DateTime now)
     {
-        if (rule.CrucibleItemType == BeastmasterCrucibleItemType.Fang && target == null)
+        var requiresTarget = rule.CrucibleItemType is BeastmasterCrucibleItemType.Fang
+            or BeastmasterCrucibleItemType.VampireFang;
+        if (requiresTarget && target == null)
         {
             Fail(ruleSet, rule, ruleIndex, matchReason, "クルーシブルアイテムには有効なターゲットが必要です", now);
             return false;
@@ -168,7 +180,7 @@ public sealed class BeastmasterRuleService
 
         var player = DalamudApi.ObjectTable.LocalPlayer as IBattleChara;
         if (player == null || !crucibleItemService.TryUseCrucibleItemOnTarget(
-                rule.CrucibleItemType, player, target!, now, out var itemId))
+                rule.CrucibleItemType, player, target, now, out var itemId))
         {
             Fail(ruleSet, rule, ruleIndex, matchReason, crucibleItemService.LastFailureReason, now);
             return false;
@@ -260,9 +272,95 @@ public sealed class BeastmasterRuleService
                 }
                 return false;
             }
+            case BeastmasterRuleConditionType.SelfHp:
+            {
+                if (player.MaxHp == 0)
+                {
+                    return false;
+                }
+
+                var hpPercent = player.CurrentHp * 100f / player.MaxHp;
+                var matched = rule.HpCondition == BeastmasterRuleHpCondition.Above
+                    ? hpPercent > rule.HpThreshold
+                    : hpPercent < rule.HpThreshold;
+                if (matched)
+                {
+                    reason = $"自身HP {hpPercent:0.#}% {(rule.HpCondition == BeastmasterRuleHpCondition.Above ? ">" : "<")} {rule.HpThreshold:0.#}%";
+                }
+                return matched;
+            }
+            case BeastmasterRuleConditionType.TargetHp:
+            {
+                if (target == null || target.MaxHp == 0)
+                {
+                    return false;
+                }
+
+                var hpPercent = target.CurrentHp * 100f / target.MaxHp;
+                var matched = rule.HpCondition == BeastmasterRuleHpCondition.Above
+                    ? hpPercent > rule.HpThreshold
+                    : hpPercent < rule.HpThreshold;
+                if (matched)
+                {
+                    reason = $"ターゲットHP {hpPercent:0.#}% {(rule.HpCondition == BeastmasterRuleHpCondition.Above ? ">" : "<")} {rule.HpThreshold:0.#}%";
+                }
+                return matched;
+            }
+            case BeastmasterRuleConditionType.TargetIsBoss:
+            {
+                if (target == null || player.MaxHp == 0 || target.MaxHp == 0)
+                {
+                    return false;
+                }
+
+                var threshold = (double)player.MaxHp * 5d;
+                var matched = target.MaxHp > threshold;
+                if (matched)
+                {
+                    reason = $"ターゲット最大HP {target.MaxHp} > 自身最大HP {player.MaxHp} × 5";
+                }
+                return matched;
+            }
             default:
                 return false;
         }
+    }
+
+    private static bool MatchesRule(
+        BeastmasterRuleDefinition rule,
+        IBattleChara player,
+        IBattleChara? target,
+        out string reason)
+    {
+        rule.EnsureConditions();
+        var results = new List<string>(rule.Conditions.Count);
+        foreach (var condition in rule.Conditions)
+        {
+            var conditionRule = new BeastmasterRuleDefinition
+            {
+                ConditionType = condition.Type,
+                StatusCondition = condition.StatusCondition,
+                DataId = condition.DataId,
+                ConditionId = condition.ConditionId,
+                HpCondition = condition.HpCondition,
+                HpThreshold = condition.HpThreshold,
+            };
+            if (Matches(conditionRule, player, target, out var conditionReason))
+            {
+                results.Add(conditionReason);
+            }
+            else if (rule.ConditionJoinMode == BeastmasterRuleConditionJoinMode.All)
+            {
+                reason = string.Empty;
+                return false;
+            }
+        }
+
+        var matched = rule.ConditionJoinMode == BeastmasterRuleConditionJoinMode.All
+            ? results.Count == rule.Conditions.Count
+            : results.Count > 0;
+        reason = matched ? string.Join(rule.ConditionJoinMode == BeastmasterRuleConditionJoinMode.All ? " かつ " : " または ", results) : string.Empty;
+        return matched;
     }
 
     private static bool MatchesStatus(BeastmasterRuleDefinition rule, bool hasStatus, string actor, out string reason)

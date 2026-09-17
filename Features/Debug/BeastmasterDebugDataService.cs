@@ -880,7 +880,7 @@ public sealed class BeastmasterDebugDataService
 
         var builder = new StringBuilder()
             .AppendLine("種別: 魔獣回復薬スキャン")
-            .AppendLine("魔獣回復薬 内部ID: 1級=76、2級=77、3級=78")
+            .AppendLine("クルーシブル回復類 内部ID: 回復薬1〜4級=76〜79、薬粉1〜3級=80〜82、吸血薬=135、セット=140")
             .AppendLine("スキャン対象コンテナ: Inventory1〜Inventory4")
             .AppendLine();
         if (candidates.Length == 0)

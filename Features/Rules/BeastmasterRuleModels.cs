@@ -11,6 +11,9 @@ public enum BeastmasterRuleConditionType
     DataIdCast,
     TargetCast,
     TargetDataId,
+    SelfHp,
+    TargetHp,
+    TargetIsBoss,
 }
 
 public enum BeastmasterRuleActionType
@@ -23,12 +26,29 @@ public enum BeastmasterCrucibleItemType
 {
     Recovery,
     Fang,
+    DodgeBook,
+    ReflectBook,
+    TimeSand,
+    StrengthMedicine,
+    VampireFang,
 }
 
 public enum BeastmasterRuleStatusCondition
 {
     Present,
     Missing,
+}
+
+public enum BeastmasterRuleHpCondition
+{
+    Above,
+    Below,
+}
+
+public enum BeastmasterRuleConditionJoinMode
+{
+    All,
+    Any,
 }
 
 public enum BeastmasterRuleAreaMode
@@ -52,35 +72,65 @@ public sealed class BeastmasterRuleDefinition
     public string Name { get; set; } = "新規ルール";
     public BeastmasterRuleConditionType ConditionType { get; set; }
     public BeastmasterRuleStatusCondition StatusCondition { get; set; } = BeastmasterRuleStatusCondition.Missing;
+    public BeastmasterRuleConditionJoinMode ConditionJoinMode { get; set; } = BeastmasterRuleConditionJoinMode.All;
+    public List<BeastmasterRuleCondition> Conditions { get; set; } = [];
     public BeastmasterRuleActionType ActionType { get; set; } = BeastmasterRuleActionType.Skill;
     public BeastmasterCrucibleItemType CrucibleItemType { get; set; } = BeastmasterCrucibleItemType.Recovery;
     public uint DataId { get; set; }
     public uint ConditionId { get; set; }
+    public BeastmasterRuleHpCondition HpCondition { get; set; }
+    public float HpThreshold { get; set; } = 50f;
     public uint ActionId { get; set; } = 44879;
     public uint CrucibleItemId { get; set; }
 
     public bool TryValidate(out string error)
     {
         error = string.Empty;
+        Conditions ??= [];
         if (string.IsNullOrWhiteSpace(Name))
         {
             error = "ルール名を入力してください。";
             return false;
         }
 
-        if (!Enum.IsDefined(ConditionType) || !Enum.IsDefined(StatusCondition))
+        if (!Enum.IsDefined(ConditionType)
+            || !Enum.IsDefined(StatusCondition)
+            || !Enum.IsDefined(HpCondition)
+            || !Enum.IsDefined(ConditionJoinMode))
         {
             error = "ルールの判定タイプが無効です。";
             return false;
         }
 
-        if (ConditionType != BeastmasterRuleConditionType.TargetDataId && ConditionId == 0)
+        if (Conditions.Count > 10)
+        {
+            error = "各ルールには最大 10 個の条件のみ設定できます。";
+            return false;
+        }
+
+        if (Conditions.Count > 0)
+        {
+            foreach (var condition in Conditions)
+            {
+                if (!condition.TryValidate(out error))
+                {
+                    return false;
+                }
+            }
+        }
+        else if (!IsTargetDataIdRule && !IsHealthRule && !IsBossRule && ConditionId == 0)
         {
             error = IsStatusRule ? "バフIDは 0 より大きい必要があります。" : "詠唱IDは 0 より大きい必要があります。";
             return false;
         }
 
-        if (RequiresDataId && DataId == 0)
+        if (Conditions.Count == 0 && IsHealthRule && (!float.IsFinite(HpThreshold) || HpThreshold is < 1f or > 100f))
+        {
+            error = "HP閾値は 1%〜100% の間である必要があります。";
+            return false;
+        }
+
+        if (Conditions.Count == 0 && RequiresDataId && DataId == 0)
         {
             error = "DataIDは 0 より大きい必要があります。";
             return false;
@@ -107,6 +157,97 @@ public sealed class BeastmasterRuleDefinition
 
     public bool IsTargetDataIdRule
         => ConditionType is BeastmasterRuleConditionType.TargetDataId;
+
+    public bool IsBossRule
+        => ConditionType is BeastmasterRuleConditionType.TargetIsBoss;
+
+    public bool IsHealthRule
+        => ConditionType is BeastmasterRuleConditionType.SelfHp
+            or BeastmasterRuleConditionType.TargetHp;
+
+    public void EnsureConditions()
+    {
+        Conditions ??= [];
+        if (Conditions.Count == 0)
+        {
+            Conditions.Add(new BeastmasterRuleCondition
+            {
+                Type = ConditionType,
+                StatusCondition = StatusCondition,
+                DataId = DataId,
+                ConditionId = ConditionId,
+                HpCondition = HpCondition,
+                HpThreshold = HpThreshold,
+            });
+        }
+    }
+
+    public void SyncLegacyFieldsFromFirstCondition()
+    {
+        if (Conditions is not { Count: > 0 }) return;
+        var first = Conditions[0];
+        ConditionType = first.Type;
+        StatusCondition = first.StatusCondition;
+        DataId = first.DataId;
+        ConditionId = first.ConditionId;
+        HpCondition = first.HpCondition;
+        HpThreshold = first.HpThreshold;
+    }
+}
+
+[Serializable]
+public sealed class BeastmasterRuleCondition
+{
+    public BeastmasterRuleConditionType Type { get; set; }
+    public BeastmasterRuleStatusCondition StatusCondition { get; set; } = BeastmasterRuleStatusCondition.Missing;
+    public uint DataId { get; set; }
+    public uint ConditionId { get; set; }
+    public BeastmasterRuleHpCondition HpCondition { get; set; }
+    public float HpThreshold { get; set; } = 50f;
+
+    public bool IsStatusRule => Type is BeastmasterRuleConditionType.SelfStatus
+        or BeastmasterRuleConditionType.TargetStatus
+        or BeastmasterRuleConditionType.DataIdStatus;
+
+    public bool RequiresDataId => Type is BeastmasterRuleConditionType.DataIdStatus
+        or BeastmasterRuleConditionType.DataIdCast
+        or BeastmasterRuleConditionType.TargetDataId;
+
+    public bool IsHealthRule => Type is BeastmasterRuleConditionType.SelfHp
+        or BeastmasterRuleConditionType.TargetHp;
+
+    public bool TryValidate(out string error)
+    {
+        error = string.Empty;
+        if (!Enum.IsDefined(Type) || !Enum.IsDefined(StatusCondition) || !Enum.IsDefined(HpCondition))
+        {
+            error = "条件タイプが無効です。";
+            return false;
+        }
+
+        if (!IsHealthRule
+            && Type != BeastmasterRuleConditionType.TargetDataId
+            && Type != BeastmasterRuleConditionType.TargetIsBoss
+            && ConditionId == 0)
+        {
+            error = IsStatusRule ? "バフIDは 0 より大きい必要があります。" : "詠唱IDは 0 より大きい必要があります。";
+            return false;
+        }
+
+        if (RequiresDataId && DataId == 0)
+        {
+            error = "DataIDは 0 より大きい必要があります。";
+            return false;
+        }
+
+        if (IsHealthRule && (!float.IsFinite(HpThreshold) || HpThreshold is < 1f or > 100f))
+        {
+            error = "HP閾値は 1%〜100% の間である必要があります。";
+            return false;
+        }
+
+        return true;
+    }
 }
 
 [Serializable]
@@ -227,6 +368,7 @@ public sealed class BeastmasterRuleSetDefinition
 
         foreach (var rule in Rules)
         {
+            rule.EnsureConditions();
             builder.AppendLine()
                 .AppendLine("[ルール]")
                 .AppendLine($"名前|{Sanitize(rule.Name)}")
@@ -235,10 +377,23 @@ public sealed class BeastmasterRuleSetDefinition
                 .AppendLine($"条件|{rule.StatusCondition}")
                 .AppendLine($"実行|{rule.ActionType}")
                 .AppendLine($"クルーシブルアイテム種別|{rule.CrucibleItemType}")
+                .AppendLine($"条件関係|{rule.ConditionJoinMode}")
                 .AppendLine($"DataId|{rule.DataId}")
                 .AppendLine($"判定ID|{rule.ConditionId}")
+                .AppendLine($"HP条件|{rule.HpCondition}")
+                .AppendLine($"HP閾値|{rule.HpThreshold.ToString(CultureInfo.InvariantCulture)}")
                 .AppendLine($"アクション|{rule.ActionId}")
                 .AppendLine($"クルーシブルアイテム|{rule.CrucibleItemId}");
+            for (var conditionIndex = 0; conditionIndex < rule.Conditions.Count; conditionIndex++)
+            {
+                var condition = rule.Conditions[conditionIndex];
+                builder.AppendLine($"条件{conditionIndex}タイプ|{condition.Type}")
+                    .AppendLine($"条件{conditionIndex}条件|{condition.StatusCondition}")
+                    .AppendLine($"条件{conditionIndex}DataId|{condition.DataId}")
+                    .AppendLine($"条件{conditionIndex}判定ID|{condition.ConditionId}")
+                    .AppendLine($"条件{conditionIndex}HP条件|{condition.HpCondition}")
+                    .AppendLine($"条件{conditionIndex}HP閾値|{condition.HpThreshold.ToString(CultureInfo.InvariantCulture)}");
+            }
         }
 
         return builder.ToString().TrimEnd();
@@ -285,6 +440,7 @@ public sealed class BeastmasterRuleSetDefinition
         }
 
         result.TerritoryIds = result.TerritoryIds.Distinct().ToList();
+        result.EnsureImportedConditions();
         if (!result.TryValidate(out error)) return false;
         ruleSet = result;
         return true;
@@ -313,20 +469,64 @@ public sealed class BeastmasterRuleSetDefinition
             }
         }
 
+        if (key.StartsWith("条件", StringComparison.Ordinal)
+            && key.Length > 2
+            && char.IsDigit(key[2])
+            && TryAssignIndexedCondition(rule, key, value))
+        {
+            return true;
+        }
+
         switch (key)
         {
             case "名前": rule.Name = value; return true;
             case "有効" when bool.TryParse(value, out var enabled): rule.Enabled = enabled; return true;
             case "判定" when Enum.TryParse<BeastmasterRuleConditionType>(value, out var condition): rule.ConditionType = condition; return true;
             case "条件" when Enum.TryParse<BeastmasterRuleStatusCondition>(value, out var status): rule.StatusCondition = status; return true;
+            case "条件関係" when Enum.TryParse<BeastmasterRuleConditionJoinMode>(value, out var joinMode): rule.ConditionJoinMode = joinMode; return true;
             case "実行" when Enum.TryParse<BeastmasterRuleActionType>(value, out var actionType): rule.ActionType = actionType; return true;
             case "クルーシブルアイテム種別" when Enum.TryParse<BeastmasterCrucibleItemType>(value, out var itemType): rule.CrucibleItemType = itemType; return true;
             case "DataId" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var dataId): rule.DataId = dataId; return true;
             case "判定ID" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var conditionId): rule.ConditionId = conditionId; return true;
+            case "HP条件" when Enum.TryParse<BeastmasterRuleHpCondition>(value, out var hpCondition): rule.HpCondition = hpCondition; return true;
+            case "HP閾値" when float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var hpThreshold): rule.HpThreshold = hpThreshold; return true;
             case "アクション" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var actionId): rule.ActionId = actionId; return true;
             case "クルーシブルアイテム" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var itemId): rule.CrucibleItemId = itemId; return true;
             default: return false;
         }
+    }
+
+    private static bool TryAssignIndexedCondition(BeastmasterRuleDefinition rule, string key, string value)
+    {
+        var fieldStart = 2;
+        while (fieldStart < key.Length && char.IsDigit(key[fieldStart])) fieldStart++;
+        if (fieldStart == 2
+            || !int.TryParse(key[2..fieldStart], NumberStyles.None, CultureInfo.InvariantCulture, out var index)
+            || index is < 0 or >= 10)
+        {
+            return false;
+        }
+
+        while (rule.Conditions.Count <= index) rule.Conditions.Add(new BeastmasterRuleCondition());
+        var condition = rule.Conditions[index];
+        var field = key[fieldStart..];
+        return field switch
+        {
+            "タイプ" when Enum.TryParse<BeastmasterRuleConditionType>(value, out var type) => Set(() => condition.Type = type),
+            "条件" when Enum.TryParse<BeastmasterRuleStatusCondition>(value, out var status) => Set(() => condition.StatusCondition = status),
+            "DataId" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var dataId) => Set(() => condition.DataId = dataId),
+            "判定ID" when uint.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) => Set(() => condition.ConditionId = id),
+            "HP条件" when Enum.TryParse<BeastmasterRuleHpCondition>(value, out var hpCondition) => Set(() => condition.HpCondition = hpCondition),
+            "HP閾値" when float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var threshold) => Set(() => condition.HpThreshold = threshold),
+            _ => false,
+        };
+
+        static bool Set(Action action) { action(); return true; }
+    }
+
+    private void EnsureImportedConditions()
+    {
+        foreach (var rule in Rules) rule.EnsureConditions();
     }
 
     private static string Sanitize(string value)
@@ -419,10 +619,20 @@ public static class BeastmasterRuleActions
         => itemId is >= 76 and <= 143;
 
     public static bool IsCrucibleItemFriendly(uint itemId)
-        => itemId is 76 or 77 or 78;
+        => itemId is 76 or 77 or 78 or 79 or 80 or 81 or 82 or 104 or 135 or 136 or 137 or 138 or 140;
 
     public static string GetCrucibleItemTypeName(BeastmasterCrucibleItemType itemType)
-        => itemType == BeastmasterCrucibleItemType.Recovery ? "魔獣回復薬" : "各種牙";
+        => itemType switch
+        {
+            BeastmasterCrucibleItemType.Recovery => "回復類アイテム",
+            BeastmasterCrucibleItemType.Fang => "各種の牙",
+            BeastmasterCrucibleItemType.DodgeBook => "回避の書",
+            BeastmasterCrucibleItemType.ReflectBook => "反射の書",
+            BeastmasterCrucibleItemType.TimeSand => "時の砂",
+            BeastmasterCrucibleItemType.StrengthMedicine => "魔獣剛力薬",
+            BeastmasterCrucibleItemType.VampireFang => "吸血鬼の牙",
+            _ => itemType.ToString(),
+        };
 
     public static string GetCrucibleItemName(uint itemId)
         => itemId switch
@@ -430,18 +640,30 @@ public static class BeastmasterRuleActions
             76 => "1級魔獣回復薬",
             77 => "2級魔獣回復薬",
             78 => "3級魔獣回復薬",
+            79 => "4級魔獣回復薬",
+            80 => "1級魔獣薬粉",
+            81 => "2級魔獣薬粉",
+            82 => "3級魔獣薬粉",
+            104 => "魔獣剛力薬",
             128 => "火の牙",
             129 => "氷の牙",
+            130 => "水の牙",
             131 => "雷の牙",
+            132 => "土の牙",
             133 => "風の牙",
+            134 => "吸血鬼の牙",
+            135 => "魔獣吸血薬",
+            136 => "反射の書",
+            137 => "回避の書",
             138 => "時の砂",
+            140 => "魔獣回復薬セット",
             _ => $"クルーシブルアイテム {itemId}",
         };
 
     public static readonly uint[] KnownCrucibleItemIds =
     [
-        76, 77, 78,
-        128, 129, 131, 133,
-        138,
+        76, 77, 78, 79, 80, 81, 82, 104,
+        128, 129, 130, 131, 132, 133, 134,
+        135, 136, 137, 138, 140,
     ];
 }
