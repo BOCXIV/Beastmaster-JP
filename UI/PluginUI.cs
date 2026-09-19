@@ -26,9 +26,9 @@ public sealed class PluginUI
 
     private static readonly (uint ActionId, string Name)[] SequenceActions =
     [
-        (44879, "砕き割り"),
-        (44883, "噛み砕き"),
-        (44885, "裂盾斧"),
+        (44879, "スマッシュ"),
+        (44883, "アクスバイト"),
+        (44885, "シールドスプリッター"),
         (44893, "シールドチャージ"),
         (44890, "はなつ"),
         (44891, "最後の一撃"),
@@ -730,30 +730,30 @@ public sealed class PluginUI
         ImGui.TextDisabled("攻略ガイド（自動戦闘には連動しません）");
         ImGui.Separator();
 
-        ImGui.Text("昆虫PT · 闘獣練 1・2層 高速周回");
-        ImGui.TextColored(new Vector4(0.95f, 0.82f, 0.25f, 1f), "推奨構成：マンティス ＋ ホーネット ＋ クーシー");
+        ImGui.Text("昆虫PT · 闘獣練 第一・二盤 高速周回");
+        ImGui.TextColored(new Vector4(0.95f, 0.82f, 0.25f, 1f), "推奨構成：マンティス ＋ ヴェスパ ＋ クーシー");
         ImGui.TextWrapped("最もシンプルかつ手軽な周回構成。マンティスの被ダメージ上昇バフを確実に当てるのがポイントです。");
         DrawCombinationStep("一号呼笛でマンティスを召喚、物理被ダメージ上昇付与後に", true, "を使用。");
-        DrawCombinationStep("二号呼笛でホーネットを召喚、", false, "で自爆。");
+        DrawCombinationStep("二号呼笛でヴェスパを召喚、", false, "で自爆。");
         DrawCombinationStep("三号呼笛でクーシーを召喚、", false, "を使用して通常攻撃。");
 
         ImGui.Separator();
         ImGui.Text("昆虫PT · 特一盤 高速周回");
-        ImGui.TextColored(new Vector4(0.95f, 0.82f, 0.25f, 1f), "推奨構成：マンティス ＋ ハミングバード ＋ ホーネット");
+        ImGui.TextColored(new Vector4(0.95f, 0.82f, 0.25f, 1f), "推奨構成：マンティス ＋ コリブリ ＋ ヴェスパ");
         DrawCombinationStep("一号呼笛でマンティスを召喚、物理被ダメージ上昇（はなつ）付与後に", true, "を使用。");
-        DrawCombinationStep("二号呼笛でハミングバードを召喚、「はなつ」で単体攻撃後に", true, "を使用。");
-        DrawCombinationStep("三号呼笛でホーネットを召喚、BOSS の HP が 25% 未満になったら", false, "を使用。");
+        DrawCombinationStep("二号呼笛でコリブリを召喚、「はなつ」で単体攻撃後に", true, "を使用。");
+        DrawCombinationStep("三号呼笛でヴェスパを召喚、BOSS の HP が 25% 未満になったら", false, "を使用。");
 
         ImGui.Separator();
         ImGui.Text("水属性PT · 参考構成");
-        ImGui.TextColored(new Vector4(0.35f, 0.75f, 1f, 1f), "サラマンダー ＋ メガロクラブ ＋ スニッパー");
-        ImGui.TextWrapped("サラマンダーとメガロクラブで魔法被ダメージ上昇および水属性被ダメージ上昇を付与し、3番手のスニッパーで大ダメージを狙う構成です。");
+        ImGui.TextColored(new Vector4(0.35f, 0.75f, 1f, 1f), "サラマンダー ＋ メガロクラブ ＋ クラブ");
+        ImGui.TextWrapped("サラマンダーとメガロクラブで魔法被ダメージ上昇および水属性被ダメージ上昇を付与し、3番手のクラブで大ダメージを狙う構成です。");
         ImGui.TextDisabled("戦闘開始前に三号呼笛に切り替えて「かりる」を準備。水棲波は被ダメージ上昇中に合わせ、敵バフ解除にも活用できます。");
         DrawCombinationStep("一号呼笛でサラマンダーを召喚、魔法被ダメージ上昇付与後に", true, "を使用。");
         DrawCombinationStep("二号呼笛でメガロクラブを召喚、水属性被ダメージ上昇を付与。連携完了後に", true, "を使用。");
-        DrawCombinationStep("三号呼笛でスニッパーを召喚、", false, "を使用して通常攻撃。");
+        DrawCombinationStep("三号呼笛でクラブを召喚、", false, "を使用して通常攻撃。");
 
-        ImGui.Text("水属性PT · 1・2層 高速周回アレンジ");
+        ImGui.Text("水属性PT · 第一・二盤 高速周回アレンジ");
         ImGui.TextColored(new Vector4(0.35f, 0.75f, 1f, 1f), "サラマンダー ＋ メガロクラブ ＋ アプカル");
         ImGui.TextDisabled("戦闘開始前に三号呼笛に切り替えてアプカルの「かりる」を準備。メガロクラブはフル連携を待たずに即移行可能です。");
         DrawCombinationStep("一号呼笛でサラマンダーを召喚、魔法被ダメージ上昇付与後に", true, "を使用。");
@@ -960,7 +960,7 @@ public sealed class PluginUI
             if (ImGui.SmallButton("削除")) { steps.RemoveAt(index); ImGui.PopID(); break; }
             ImGui.PopID();
         }
-        if (ImGui.Button($"{title}ステップを追加")) steps.Add(new(countdown ? 0f : null, 44879, "砕き割り"));
+        if (ImGui.Button($"{title}ステップを追加")) steps.Add(new(countdown ? 0f : null, 44879, "スマッシュ"));
     }
 
     private void DrawRuleEditor()

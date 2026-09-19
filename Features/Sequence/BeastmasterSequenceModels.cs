@@ -105,7 +105,7 @@ public sealed class BeastmasterSequenceDefinition
             ],
             CombatSteps =
             [
-                new(null, 44879, "砕き割り"),
+                new(null, 44879, "スマッシュ"),
             ],
         };
 

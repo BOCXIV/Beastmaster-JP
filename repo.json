@@ -5,7 +5,7 @@
     "Description": "魔獣使いのジョブクエストおよび魔獣図鑑の収集進捗を管理し、捕獲情報の自動記録やクエスト・図鑑対象へのナビゲーションを提供します（vnavmesh / Lifestream 連携対応）。コマンド：/魔獣使い 出力、で自動出力と一時停止を切り替えます。",
     "InternalName": "Beastmaster",
     "IconUrl": "https://raw.githubusercontent.com/anmili2022/Beastmaster/main/images/icon.png?v=2",
-    "AssemblyVersion": "0.1.36.0",
+    "AssemblyVersion": "0.1.36.1",
     "RepoUrl": "https://github.com/BOCXIV/Beastmaster-JP",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
@@ -16,9 +16,9 @@
     ],
     "IsHide": false,
     "IsTestingExclusive": false,
-    "DownloadLinkInstall": "https://github.com/BOCXIV/Beastmaster-JP/releases/download/0.1.36.0/Beastmaster.zip",
-    "DownloadLinkTesting": "https://github.com/BOCXIV/Beastmaster-JP/releases/download/0.1.36.0/Beastmaster.zip",
-    "DownloadLinkUpdate": "https://github.com/BOCXIV/Beastmaster-JP/releases/download/0.1.36.0/Beastmaster.zip",
-    "LastUpdated": "2026-09-19T13:30:00Z"
+    "DownloadLinkInstall": "https://github.com/BOCXIV/Beastmaster-JP/releases/download/0.1.36.1/Beastmaster.zip",
+    "DownloadLinkTesting": "https://github.com/BOCXIV/Beastmaster-JP/releases/download/0.1.36.1/Beastmaster.zip",
+    "DownloadLinkUpdate": "https://github.com/BOCXIV/Beastmaster-JP/releases/download/0.1.36.1/Beastmaster.zip",
+    "LastUpdated": "2026-09-19T17:15:00Z"
   }
 ]
