@@ -416,7 +416,7 @@ public sealed class BeastmasterRuleSetDefinition
         {
             var line = lines[index].Trim();
             if (line.Length == 0) continue;
-            if (line is "[ルール]" or "[规则]")
+            if (line is "[ルール]" or "[\u89C4\u5219]")
             {
                 currentRule = new BeastmasterRuleDefinition();
                 result.Rules.Add(currentRule);
@@ -656,6 +656,7 @@ public static class BeastmasterRuleActions
             136 => "反射の書",
             137 => "回避の書",
             138 => "時の砂",
+            139 => "星の砂",
             140 => "魔獣回復薬セット",
             _ => $"クルーシブルアイテム {itemId}",
         };
@@ -664,6 +665,6 @@ public static class BeastmasterRuleActions
     [
         76, 77, 78, 79, 80, 81, 82, 104,
         128, 129, 130, 131, 132, 133, 134,
-        135, 136, 137, 138, 140,
+        135, 136, 137, 138, 139, 140,
     ];
 }

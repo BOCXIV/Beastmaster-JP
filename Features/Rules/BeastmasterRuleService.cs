@@ -120,6 +120,12 @@ public sealed class BeastmasterRuleService
             return false;
         }
 
+        if (BeastmasterFinalStrikeLock.IsBlocked(rule.ActionId, now))
+        {
+            Fail(ruleSet, rule, ruleIndex, matchReason, BeastmasterFinalStrikeLock.GetBlockReason(rule.ActionId, now), now);
+            return false;
+        }
+
         var availability = BeastmasterActionHelper.GetAvailability(
             rule.ActionId,
             targetId,
@@ -151,6 +157,15 @@ public sealed class BeastmasterRuleService
             return false;
         }
 
+        if (rule.ActionId == 44890)
+        {
+            BeastmasterFinalStrikeLock.RecordRelease(now);
+        }
+        else if (rule.ActionId == 44891)
+        {
+            BeastmasterFinalStrikeLock.RecordFinalStrike(now);
+        }
+
         var message = $"ルールセット「{ruleSet.Name}」第 {ruleIndex + 1} 条「{rule.Name}」条件一致：{matchReason}；{availability.ActionName}（{availability.ActionId}）を実行リクエスト";
         RecordDiagnostic(message);
         lastFailureMessages.Remove($"{ruleSet.Name}|{rule.Name}");
@@ -179,23 +194,50 @@ public sealed class BeastmasterRuleService
         }
 
         var player = DalamudApi.ObjectTable.LocalPlayer as IBattleChara;
+        var requestSource = new BeastmasterCrucibleItemService.RuleRequestSource(ruleSet.Name, rule.Name, ruleIndex);
         if (player == null || !crucibleItemService.TryUseCrucibleItemOnTarget(
-                rule.CrucibleItemType, player, target, now, out var itemId))
+                rule.CrucibleItemType, player, target, now, out var itemId, requestSource))
         {
             Fail(ruleSet, rule, ruleIndex, matchReason, crucibleItemService.LastFailureReason, now);
             return false;
         }
 
         var itemName = BeastmasterRuleActions.GetCrucibleItemName(itemId);
-        var message = $"ルールセット「{ruleSet.Name}」第 {ruleIndex + 1} 条「{rule.Name}」条件一致：{matchReason}；{itemName}（{itemId}）を使用しました";
+        var message = $"ルールセット「{ruleSet.Name}」第 {ruleIndex + 1} 条「{rule.Name}」条件一致：{matchReason}；{itemName}（{itemId}）のリクエストを送信しました";
         RecordDiagnostic(message);
-        lastFailureMessages.Remove($"{ruleSet.Name}|{rule.Name}");
-        if (configuration.RuleDiagnosticsEnabled
-            && ruleSet.DiagnosticMode == BeastmasterRuleDiagnosticMode.Full)
-        {
-            PrintChat($"{ruleSet.Name}|{rule.Name}|成功", message, now, TimeSpan.FromSeconds(2));
-        }
         return true;
+    }
+
+    public void ProcessCrucibleDispatchResults(DateTime now)
+    {
+        while (crucibleItemService.TryTakeRuleDispatchResult(out var result))
+        {
+            var ruleKey = $"{result.Source.RuleSetName}|{result.Source.RuleName}";
+            var itemName = BeastmasterRuleActions.GetCrucibleItemName(result.ItemId);
+            if (result.Success)
+            {
+                var message = $"ルールセット「{result.Source.RuleSetName}」第 {result.Source.RuleIndex + 1} 条「{result.Source.RuleName}」：{itemName}（{result.ItemId}）を使用しました";
+                RecordDiagnostic(message);
+                lastFailureMessages.Remove(ruleKey);
+                var ruleSet = configuration.RuleSets.FirstOrDefault(set => string.Equals(set.Name, result.Source.RuleSetName, StringComparison.Ordinal));
+                if (configuration.RuleDiagnosticsEnabled && ruleSet?.DiagnosticMode == BeastmasterRuleDiagnosticMode.Full)
+                {
+                    PrintChat($"{ruleKey}|成功", message, now, TimeSpan.FromSeconds(2));
+                }
+            }
+            else
+            {
+                var ruleSet = configuration.RuleSets.FirstOrDefault(set => string.Equals(set.Name, result.Source.RuleSetName, StringComparison.Ordinal));
+                if (ruleSet != null && result.Source.RuleIndex >= 0 && result.Source.RuleIndex < ruleSet.Rules.Count)
+                {
+                    Fail(ruleSet, ruleSet.Rules[result.Source.RuleIndex], result.Source.RuleIndex, "ディスパッチ失敗", result.Detail, now);
+                }
+                else
+                {
+                    RecordDiagnostic($"ルールディスパッチ失敗：{itemName}（{result.ItemId}）- {result.Detail}");
+                }
+            }
+        }
     }
 
     private void Fail(

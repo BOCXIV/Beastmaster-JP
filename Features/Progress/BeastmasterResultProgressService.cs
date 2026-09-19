@@ -6,7 +6,7 @@ namespace Beastmaster;
 public sealed unsafe class BeastmasterResultProgressService : IDisposable
 {
     private const string AddonName = "XBMResult";
-    private const int SlotCount = 10;
+    private const int MaximumSlotCount = 15;
     private const int IconStartIndex = 73;
     private const int ExperienceAfterStartIndex = 105;
     private const int LevelAfterStartIndex = 137;
@@ -17,6 +17,7 @@ public sealed unsafe class BeastmasterResultProgressService : IDisposable
     private long pendingSince;
     private string pendingSnapshot = string.Empty;
     private string lastAppliedSnapshot = string.Empty;
+    private Dictionary<int, (int Level, int Experience, int ExperienceRequired)> pendingUpdates = [];
 
     public BeastmasterResultProgressService(BeastmasterProgressService progressService)
     {
@@ -25,7 +26,11 @@ public sealed unsafe class BeastmasterResultProgressService : IDisposable
 
     public void Start() => DalamudApi.Framework.Update += OnFrameworkUpdate;
 
-    public void Dispose() => DalamudApi.Framework.Update -= OnFrameworkUpdate;
+    public void Dispose()
+    {
+        DalamudApi.Framework.Update -= OnFrameworkUpdate;
+        ApplyPendingSnapshot("プラグインアンロード前");
+    }
 
     private void OnFrameworkUpdate(IFramework framework)
     {
@@ -39,16 +44,28 @@ public sealed unsafe class BeastmasterResultProgressService : IDisposable
             nextReadAt = Environment.TickCount64 + 250;
             var characterKey = progressService.CurrentCharacterKey;
             var addon = (AtkUnitBase*)DalamudApi.GameGui.GetAddonByName(AddonName, 1).Address;
-            if (characterKey.Length == 0 || addon == null || !addon->IsVisible || addon->AtkValues == null
-                || addon->AtkValuesCount <= LevelAfterStartIndex + SlotCount - 1)
+            if (characterKey.Length == 0)
             {
-                pendingSnapshot = string.Empty;
-                pendingSince = 0;
+                ClearPendingSnapshot();
+                return;
+            }
+
+            if (addon == null || !addon->IsVisible || addon->AtkValues == null
+                || addon->AtkValuesCount <= LevelAfterStartIndex)
+            {
+                ApplyPendingSnapshot("リザルト画面終了時");
                 return;
             }
 
             var updates = new Dictionary<int, (int Level, int Experience, int ExperienceRequired)>();
-            for (var slot = 0; slot < SlotCount; slot++)
+            var slotCount = Math.Min(
+                MaximumSlotCount,
+                Math.Min(
+                    addon->AtkValuesCount - IconStartIndex,
+                    Math.Min(
+                        addon->AtkValuesCount - ExperienceAfterStartIndex,
+                        addon->AtkValuesCount - LevelAfterStartIndex)));
+            for (var slot = 0; slot < slotCount; slot++)
             {
                 var icon = ReadNumber(addon->AtkValues[IconStartIndex + slot]);
                 var level = ReadNumber(addon->AtkValues[LevelAfterStartIndex + slot]);
@@ -73,6 +90,7 @@ public sealed unsafe class BeastmasterResultProgressService : IDisposable
             if (snapshot != pendingSnapshot)
             {
                 pendingSnapshot = snapshot;
+                pendingUpdates = new Dictionary<int, (int Level, int Experience, int ExperienceRequired)>(updates);
                 pendingSince = Environment.TickCount64;
                 return;
             }
@@ -82,19 +100,43 @@ public sealed unsafe class BeastmasterResultProgressService : IDisposable
                 return;
             }
 
-            lastAppliedSnapshot = snapshot;
-            var changed = progressService.UpdateBeastProgress(updates);
-            if (changed > 0)
-            {
-                DalamudApi.Log.Information("闘獣リザルトから {Count} 体の魔獣のレベル・経験値を同期しました。", changed);
-            }
+            ApplyPendingSnapshot("500ms安定後");
         }
         catch (Exception ex)
         {
-            pendingSnapshot = string.Empty;
-            pendingSince = 0;
+            ClearPendingSnapshot();
             DalamudApi.Log.Warning(ex, "闘獣リザルトのレベル・経験値の読み取りに失敗しました。");
         }
+    }
+
+    private void ApplyPendingSnapshot(string reason)
+    {
+        if (pendingSnapshot.Length == 0
+            || pendingUpdates.Count == 0
+            || pendingSnapshot == lastAppliedSnapshot)
+        {
+            ClearPendingSnapshot();
+            return;
+        }
+
+        lastAppliedSnapshot = pendingSnapshot;
+        var changed = progressService.UpdateBeastProgress(pendingUpdates, saveInBackground: true);
+        if (changed > 0)
+        {
+            DalamudApi.Log.Information(
+                "闘獣リザルトは{Reason}に {Count} 体の魔獣のレベル・経験値を同期しました。",
+                reason,
+                changed);
+        }
+
+        ClearPendingSnapshot();
+    }
+
+    private void ClearPendingSnapshot()
+    {
+        pendingSnapshot = string.Empty;
+        pendingUpdates.Clear();
+        pendingSince = 0;
     }
 
     private static uint ReadNumber(AtkValue value)

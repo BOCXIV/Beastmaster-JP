@@ -12,7 +12,16 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
     [NonSerialized]
     private DateTime lastSaveFailureUtc = DateTime.MinValue;
 
-    public int Version { get; set; } = 44;
+    [NonSerialized]
+    private readonly SemaphoreSlim saveSemaphore = new(1, 1);
+
+    [NonSerialized]
+    private readonly object saveTaskGate = new();
+
+    [NonSerialized]
+    private Task pendingSaveTask = Task.CompletedTask;
+
+    public int Version { get; set; } = 45;
     public string SelectedStageKey { get; set; } = string.Empty;
     public string SelectedMainSection { get; set; } = "quests";
     public bool HideCompletedQuests { get; set; }
@@ -58,6 +67,7 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
     public bool AutoBeastSkillEnabled { get; set; }
     public bool AutoRecoveryItemEnabled { get; set; }
     public float AutoRecoveryItemHpThreshold { get; set; } = 30f;
+    public bool AutoRecoveryItemDiagnosticsEnabled { get; set; }
     public bool WhistleRotationEnabled { get; set; }
     public bool ForceCaptureEnabled { get; set; }
     public bool ActiveAttackEnabled { get; set; }
@@ -220,7 +230,7 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
         if (Version < 19)
         {
             var placeholder = RuleSets.Count == 1
-                && (RuleSets[0].Name is "デフォルトルールセット" or "默认规则集")
+                && (RuleSets[0].Name is "デフォルトルールセット" or "\u9ED8\u8BA4\u89C4\u5219\u96C6")
                 && RuleSets[0].Rules.Count == 0;
             var hasBuiltInArenaRules = RuleSets.Any(ruleSet =>
                 ruleSet.Rules.Any(rule => rule.ConditionType == BeastmasterRuleConditionType.SelfStatus
@@ -482,6 +492,13 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
             Save();
         }
 
+        if (Version < 45)
+        {
+            AutoRecoveryItemDiagnosticsEnabled = false;
+            Version = 45;
+            Save();
+        }
+
         if (PartyPresets.Count == 0)
         {
             PartyPresets.Add(new BeastmasterPartyPreset());
@@ -526,6 +543,7 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
             return;
         }
 
+        saveSemaphore.Wait();
         try
         {
             pluginInterface.SavePluginConfig(this);
@@ -540,6 +558,40 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
                     "Beastmaster の設定保存に失敗しました。pluginConfigs\\Beastmaster.json の書き込み権限を確認してください。",
                     Array.Empty<object>());
             }
+        }
+        finally
+        {
+            saveSemaphore.Release();
+        }
+    }
+
+    public void QueueSave()
+    {
+        lock (saveTaskGate)
+        {
+            pendingSaveTask = pendingSaveTask.ContinueWith(
+                _ => Save(),
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
+        }
+    }
+
+    public void FlushPendingSaves()
+    {
+        Task task;
+        lock (saveTaskGate)
+        {
+            task = pendingSaveTask;
+        }
+
+        try
+        {
+            task.GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            DalamudApi.Log.Error(ex, "Beastmaster 設定のバックグラウンド保存完了待機中に失敗しました。", Array.Empty<object>());
         }
     }
 }

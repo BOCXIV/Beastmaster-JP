@@ -6,7 +6,7 @@ namespace Beastmaster;
 public sealed class BeastmasterPlugin : IDalamudPlugin
 {
     private const string CommandName = "/beastmaster";
-    private const string ChineseCommandName = "/驯兽师";
+    private const string ChineseCommandName = "/\u9A6F\u517D\u5E08";
     private const string JapaneseCommandName = "/魔獣使い";
     private readonly PluginUI ui;
     private readonly BeastmasterNavigationService navigationService;
@@ -54,7 +54,7 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
         var debugDataService = new BeastmasterDebugDataService(countdownService);
         navigationService = new BeastmasterNavigationService(pluginInterface, Configuration);
         catalogChatTracker = new BeastmasterCatalogChatTracker(Configuration, progressService);
-        autoCaptureService = new BeastmasterAutoCaptureService(Configuration, sequenceService, ruleService);
+        autoCaptureService = new BeastmasterAutoCaptureService(Configuration, sequenceService, ruleService, crucibleItemService);
         ui = new PluginUI(Configuration, progressService, questService, navigationService, debugDataService, autoCaptureService, catalogSyncService, achievementSyncService, notebookSyncService, sequenceService, ruleService, petPartyService);
 
         DalamudApi.Commands.AddHandler(CommandName, new CommandInfo(OnCommand)
@@ -95,6 +95,7 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
         notebookSyncService.Dispose();
         petPartyService.Dispose();
         navigationService.Dispose();
+        Configuration.FlushPendingSaves();
         Configuration.Save();
     }
 
@@ -109,11 +110,11 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
         }
 
         if (trimmed.StartsWith("カウントダウン", StringComparison.Ordinal)
-            || trimmed.StartsWith("倒计时", StringComparison.Ordinal)
+            || trimmed.StartsWith("\u5012\u8BA1\u65F6", StringComparison.Ordinal)
             || trimmed.StartsWith("countdown", StringComparison.OrdinalIgnoreCase))
         {
             var prefixLength = trimmed.StartsWith("カウントダウン", StringComparison.Ordinal) ? 7
-                : trimmed.StartsWith("倒计时", StringComparison.Ordinal) ? 3
+                : trimmed.StartsWith("\u5012\u8BA1\u65F6", StringComparison.Ordinal) ? 3
                 : 9;
             var remainder = trimmed.Length > prefixLength ? trimmed[prefixLength..].Trim() : string.Empty;
             if (string.IsNullOrEmpty(remainder))
@@ -133,7 +134,7 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
         }
 
         if (trimmed.StartsWith("カウントダウン中止", StringComparison.Ordinal)
-            || trimmed.StartsWith("取消倒计时", StringComparison.Ordinal)
+            || trimmed.StartsWith("\u53D6\u6D88\u5012\u8BA1\u65F6", StringComparison.Ordinal)
             || trimmed.StartsWith("cancelcountdown", StringComparison.OrdinalIgnoreCase))
         {
             countdownService.CancelCustomCountdown();
@@ -143,7 +144,7 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
         switch (trimmed)
         {
             case "出力":
-            case "输出":
+            case "\u8F93\u51FA":
             case "output":
                 if (!autoCaptureService.IsEnabled)
                 {

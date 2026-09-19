@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Text;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using FFXIVClientStructs.FFXIV.Component.GUI;
@@ -18,10 +19,211 @@ public sealed class BeastmasterDebugDataService
     private const int ResultLimit = 200;
     private readonly BeastmasterCountdownService countdownService;
 
+    private bool useActionScanActive;
+    private uint useActionScanNext;
+    private uint useActionScanEnd;
+    private ushort useActionScanItemId;
+    private uint useActionScanInventorySlot;
+    private readonly StringBuilder useActionScanLog = new();
+
     public BeastmasterDebugDataService(BeastmasterCountdownService countdownService)
     {
         this.countdownService = countdownService;
     }
+
+    public unsafe string StartUseActionScan(int displaySlot, uint startActionId, uint endActionId)
+    {
+        var agentModule = AgentModule.Instance();
+        var agent = agentModule == null ? null : (byte*)agentModule->GetAgentByInternalId((AgentId)497);
+        var eventFramework = EventFramework.Instance();
+        var director = eventFramework == null ? null : eventFramework->GetInstanceContentDirector();
+        if (agent == null || director == null || (int)director->InstanceContentType != 22)
+        {
+            return "起動失敗：闘獣練内にいる必要があります。";
+        }
+
+        if (displaySlot < 0 || displaySlot >= 10)
+        {
+            return "起動失敗：表示スロットが範囲外です。";
+        }
+
+        var entry = agent + DebugMappingOffset + displaySlot * DebugMappingStride;
+        var invSlot = *(uint*)entry;
+        var itemId = ((ushort*)entry)[2];
+        if (itemId == 0)
+        {
+            return "起動失敗：指定の表示スロットが空です。";
+        }
+
+        useActionScanActive = true;
+        useActionScanNext = startActionId;
+        useActionScanEnd = endActionId;
+        useActionScanItemId = itemId;
+        useActionScanInventorySlot = invSlot;
+        useActionScanLog.Clear();
+        useActionScanLog.AppendLine($"[ActionIdスキャン] 開始：スロット{displaySlot}/アイテム{itemId}/範囲 {startActionId}〜{endActionId}");
+        useActionScanLog.AppendLine("各 actionId はアニメーション硬直がゼロになるのを待ってから個別に実行し、一致（HP上昇または硬直発生）で停止します。");
+        return "ActionId スキャンを開始しました。画面を開いたまま出力を待機してください。";
+    }
+
+    public unsafe void UpdateUseActionScan()
+    {
+        if (!useActionScanActive)
+        {
+            return;
+        }
+
+        var actionManager = ActionManager.Instance();
+        var eventFramework = EventFramework.Instance();
+        var director = eventFramework == null ? null : eventFramework->GetInstanceContentDirector();
+        if (actionManager == null || director == null || (int)director->InstanceContentType != 22)
+        {
+            useActionScanLog.AppendLine("スキャン中断：コンテキストが利用できません。");
+            useActionScanActive = false;
+            return;
+        }
+
+        if (actionManager->AnimationLock > 0f)
+        {
+            return;
+        }
+
+        if (useActionScanNext > useActionScanEnd)
+        {
+            useActionScanLog.AppendLine("スキャン完了：範囲内に有効な actionId は見つかりませんでした。");
+            useActionScanActive = false;
+            return;
+        }
+
+        var actionId = useActionScanNext;
+        useActionScanNext++;
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        var selfTargetId = player?.GameObjectId ?? 0;
+        var statusSelf = actionManager->GetActionStatus(ActionType.Action, actionId, selfTargetId);
+        var statusNoTarget = actionManager->GetActionStatus(ActionType.Action, actionId, 0);
+        var hpBefore = player?.CurrentHp ?? 0;
+        var invBefore = *(ushort*)((byte*)director + DebugInventoryOffset + useActionScanInventorySlot * DebugInventoryStride);
+        var lockBefore = actionManager->AnimationLock;
+        var used = actionManager->UseAction(ActionType.Action, actionId, selfTargetId);
+        var hpAfter = player?.CurrentHp ?? 0;
+        var invAfter = *(ushort*)((byte*)director + DebugInventoryOffset + useActionScanInventorySlot * DebugInventoryStride);
+        var lockAfter = actionManager->AnimationLock;
+        var hit = hpAfter != hpBefore || invAfter != invBefore;
+        useActionScanLog.AppendLine(
+            $"  action={actionId} 状態(self/0)={statusSelf}/{statusNoTarget} UseAction={used}"
+            + $" 硬直{lockBefore:0.###}→{lockAfter:0.###} HP {hpBefore}→{hpAfter} インベントリ {invBefore}→{invAfter}{(hit ? "  <== 一致!" : "")}");
+        if (hit)
+        {
+            useActionScanLog.AppendLine($"スキャン一致 actionId={actionId}、停止します。");
+            useActionScanActive = false;
+        }
+    }
+
+    public bool TryTakeUseActionScanLog(out string log)
+    {
+        if (useActionScanLog.Length == 0)
+        {
+            log = string.Empty;
+            return false;
+        }
+
+        log = useActionScanLog.ToString().TrimEnd();
+        useActionScanLog.Clear();
+        return true;
+    }
+
+    public bool IsUseActionScanActive => useActionScanActive;
+
+    private bool captureActive;
+    private readonly StringBuilder captureLog = new();
+
+    public string StartCrucibleClickCapture()
+    {
+        if (captureActive)
+        {
+            return "キャプチャはすでに実行中です。";
+        }
+
+        captureActive = true;
+        captureLog.Clear();
+        captureLog.AppendLine("[クルーシブルクリックキャプチャ] 開始しました。分析対象のクルーシブルアイテム枠を手動でクリックし、停止ボタンを押してログを確認してください。");
+        DalamudApi.AddonLifecycle.RegisterListener(Dalamud.Game.Addon.Lifecycle.AddonEvent.PreReceiveEvent, OnCaptureAddonEvent);
+        DalamudApi.AgentLifecycle.RegisterListener(Dalamud.Game.Agent.AgentEvent.PreReceiveEvent, (Dalamud.Game.Agent.AgentId)497, OnCaptureAgentEvent);
+        return "キャプチャを開始しました。クルーシブルアイテム枠を手動でクリックしてください。";
+    }
+
+    public string StopCrucibleClickCapture()
+    {
+        if (captureActive)
+        {
+            DalamudApi.AddonLifecycle.UnregisterListener(Dalamud.Game.Addon.Lifecycle.AddonEvent.PreReceiveEvent, OnCaptureAddonEvent);
+            DalamudApi.AgentLifecycle.UnregisterListener(Dalamud.Game.Agent.AgentEvent.PreReceiveEvent, (Dalamud.Game.Agent.AgentId)497, OnCaptureAgentEvent);
+            captureActive = false;
+        }
+
+        var result = captureLog.ToString().TrimEnd();
+        return result.Length == 0 ? "キャプチャは実行されていないか、ログがありません。" : result;
+    }
+
+    public bool IsCaptureActive => captureActive;
+
+    private void OnCaptureAddonEvent(
+        Dalamud.Game.Addon.Lifecycle.AddonEvent type,
+        Dalamud.Game.Addon.Lifecycle.AddonArgTypes.AddonArgs args)
+    {
+        if (!captureActive || args.AddonName is null || !args.AddonName.StartsWith("XBM", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (args is Dalamud.Game.Addon.Lifecycle.AddonArgTypes.AddonReceiveEventArgs receiveArgs)
+        {
+            captureLog.AppendLine(
+                $"[Addon] {args.AddonName} AtkEventType={receiveArgs.AtkEventType} EventParam={receiveArgs.EventParam}");
+        }
+        else
+        {
+            captureLog.AppendLine($"[Addon] {args.AddonName} {args.GetType().Name}");
+        }
+    }
+
+    private unsafe void OnCaptureAgentEvent(
+        Dalamud.Game.Agent.AgentEvent type,
+        Dalamud.Game.Agent.AgentArgTypes.AgentArgs args)
+    {
+        if (!captureActive)
+        {
+            return;
+        }
+
+        if (args is Dalamud.Game.Agent.AgentArgTypes.AgentReceiveEventArgs receiveArgs)
+        {
+            var valueCount = (int)Math.Min(receiveArgs.ValueCount, 20u);
+            var values = (AtkValue*)receiveArgs.AtkValues;
+            var renderedValues = new List<string>(valueCount);
+            for (var index = 0; index < valueCount && values != null; index++)
+            {
+                renderedValues.Add($"[{index}]={FormatAgentValue(values[index])}");
+            }
+
+            captureLog.AppendLine(
+                $"[Agent497] Kind={receiveArgs.EventKind} Count={receiveArgs.ValueCount} {string.Join(", ", renderedValues)}");
+        }
+        else
+        {
+            captureLog.AppendLine($"[Agent497] {args.GetType().Name}");
+        }
+    }
+
+    private static string FormatAgentValue(AtkValue value)
+        => value.TypeCode() switch
+        {
+            2 => $"Bool:{value.Bool}",
+            3 => $"Int:{value.Int}",
+            4 or 5 => $"UInt:{value.UInt}",
+            8 or 10 => $"String:\"{value.String.ToString() ?? string.Empty}\"",
+            _ => $"Type:{value.Type}",
+        };
 
     public string GetCharacter()
     {
@@ -516,6 +718,11 @@ public sealed class BeastmasterDebugDataService
     public unsafe string GetBeastResultProgressionProbe()
     {
         const int agentDumpSize = 0x1000;
+        const int maximumSlots = 15;
+        const int iconStartIndex = 73;
+        const int experienceAfterStartIndex = 105;
+        const int levelAfterStartIndex = 137;
+        const uint iconBase = 242000;
         var builder = new StringBuilder()
             .AppendLine("種別: 闘獣リザルトレベル経験値")
             .AppendLine("モード: 読み取り専用（コールバック発火・リザルト退出・メモリ書き込みなし）")
@@ -538,6 +745,24 @@ public sealed class BeastmasterDebugDataService
         for (var index = 0; index < result->AtkValuesCount; index++)
         {
             builder.AppendLine($"  ResultValue[{index}]: {FormatAtkValue(result->AtkValues[index])}");
+        }
+
+        builder.AppendLine().AppendLine("リザルト対象解析（最大15枠）:");
+        var slotCount = Math.Min(
+            maximumSlots,
+            Math.Min(
+                result->AtkValuesCount - iconStartIndex,
+                Math.Min(
+                    result->AtkValuesCount - experienceAfterStartIndex,
+                    result->AtkValuesCount - levelAfterStartIndex)));
+        for (var slot = 0; slot < slotCount; slot++)
+        {
+            var icon = ReadDebugNumber(result->AtkValues[iconStartIndex + slot]);
+            var experience = ReadDebugNumber(result->AtkValues[experienceAfterStartIndex + slot]);
+            var level = ReadDebugNumber(result->AtkValues[levelAfterStartIndex + slot]);
+            builder.AppendLine(icon is > iconBase and <= iconBase + 50
+                ? $"  枠 {slot + 1:00}: 図鑑 {icon - iconBase:00} | 魔獣Lv {level} | 経験値 {experience}/100 | Icon={icon}"
+                : $"  枠 {slot + 1:00}: 空または無効 | Level={level} | Exp={experience} | Icon={icon}");
         }
 
         var agentModule = AgentModule.Instance();
@@ -1689,6 +1914,442 @@ public sealed class BeastmasterDebugDataService
             builder.AppendLine($"合計 {itemCount} 個のクルーシブルアイテムが見つかりました。");
         }
 
+        return builder.ToString().TrimEnd();
+    }
+
+    private const string DebugUseStatusSignature = "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 41 8B F8 48 8B D9 83 FA 0A 0F 83 ?? ?? ?? ?? 8B C2 48 8D 14 40 48 8D 34 91 0F B7 86 84 23 00 00";
+    private const string DebugRefreshMappingSignature = "48 89 5C 24 18 57 48 83 EC 30 48 8B D9 E8 ?? ?? ?? ?? 48 8B C8 E8 ?? ?? ?? ?? 48 8B F8 48 85 C0 0F 84 ?? ?? ?? ?? 48 89 6C 24 40 33 ED";
+    private const int DebugMappingOffset = 80;
+    private const int DebugMappingStride = 8;
+    private const int DebugInventoryOffset = 9092;
+    private const int DebugInventoryStride = 12;
+
+    public unsafe string TestCrucibleExecuteSlot(int displaySlot)
+    {
+        var builder = new StringBuilder()
+            .AppendLine("種別: クルーシブルアイテム ExecuteSlot テスト")
+            .AppendLine("モード: 実際にクルーシブルアイテムを実行（アイテムを消費します！）")
+            .AppendLine($"対象表示スロット: {displaySlot}")
+            .AppendLine($"TerritoryType: {DalamudApi.ClientState.TerritoryType}")
+            .AppendLine();
+
+        var actionManager = ActionManager.Instance();
+        var hotbar = RaptureHotbarModule.Instance();
+        var uimodule = FFXIVClientStructs.FFXIV.Client.UI.UIModule.Instance();
+        var agentModule = AgentModule.Instance();
+        var agent = agentModule == null ? null : (byte*)agentModule->GetAgentByInternalId((AgentId)497);
+        var eventFramework = EventFramework.Instance();
+        var director = eventFramework == null ? null : eventFramework->GetInstanceContentDirector();
+        if (actionManager == null || hotbar == null || agent == null || director == null
+            || (int)director->InstanceContentType != 22)
+        {
+            builder.AppendLine("前提条件が満たされていません：闘獣練内にいてクルーシブル画面が利用可能である必要があります。");
+            builder.AppendLine($"  ActionManager={(actionManager == null ? "null" : "ok")} Hotbar={(hotbar == null ? "null" : "ok")}"
+                + $" Agent497={(agent == null ? "null" : "ok")} Director={(director == null ? "null" : "other")}"
+                + (director == null ? "" : $" InstanceContentType={(int)director->InstanceContentType}"));
+            return builder.ToString().TrimEnd();
+        }
+
+        if (!DalamudApi.SigScanner.TryScanText(DebugUseStatusSignature, out var statusAddress)
+            || !DalamudApi.SigScanner.TryScanText(DebugRefreshMappingSignature, out var refreshAddress))
+        {
+            builder.AppendLine("ネイティブシグネチャが見つかりません。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var refreshMapping = (delegate* unmanaged<byte*, void>)refreshAddress;
+        var getUseStatus = (delegate* unmanaged<byte*, uint, byte, uint>)statusAddress;
+        refreshMapping(agent);
+        builder.AppendLine("マッピング更新完了。現在の表示スロットマッピング（displaySlot: inventorySlot/itemId）:");
+        for (var i = 0; i < 10; i++)
+        {
+            var entry = agent + DebugMappingOffset + i * DebugMappingStride;
+            var invSlot = *(uint*)entry;
+            var itemId = ((ushort*)entry)[2];
+            var invItemId = invSlot < 10
+                ? *(ushort*)((byte*)director + DebugInventoryOffset + invSlot * DebugInventoryStride)
+                : (ushort)0;
+            builder.AppendLine($"  [{i}] inv={invSlot} itemId={itemId} インベントリ検証={invItemId}");
+        }
+
+        if (displaySlot < 0 || displaySlot >= 10)
+        {
+            builder.AppendLine("表示スロットが範囲外です。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var targetEntry = agent + DebugMappingOffset + displaySlot * DebugMappingStride;
+        var targetInvSlot = *(uint*)targetEntry;
+        var targetItemId = ((ushort*)targetEntry)[2];
+        builder.AppendLine();
+        builder.AppendLine($"選択表示スロット {displaySlot}: inventorySlot={targetInvSlot} itemId={targetItemId}");
+        if (targetItemId == 0)
+        {
+            builder.AppendLine("スロットが空のため、実行できません。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        var useStatus = getUseStatus((byte*)director, targetInvSlot, 0);
+        builder.AppendLine($"getUseStatus={useStatus} HP={(player == null ? 0 : player.CurrentHp)}");
+
+        if (actionManager->AnimationLock > 0f)
+        {
+            builder.AppendLine();
+            builder.AppendLine($"現在のアニメーション硬直={actionManager->AnimationLock:0.###}。硬直が切れてから再実行してください。");
+            return builder.ToString().TrimEnd();
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("CommandType 走査開始（判定：硬直 0→正 / HP変化 / インベントリitemId変化）:");
+
+        for (var commandType = 22; commandType <= 45; commandType++)
+        {
+            if (actionManager->AnimationLock > 0f)
+            {
+                builder.AppendLine($"  走査中断：アニメーション硬直が発生={actionManager->AnimationLock:0.###}（前のタイプがアクションをトリガーした可能性があります）");
+                break;
+            }
+
+            var hpBefore = player == null ? 0u : player.CurrentHp;
+            var invBefore = *(ushort*)((byte*)director + DebugInventoryOffset + targetInvSlot * DebugInventoryStride);
+            var slot = new RaptureHotbarModule.HotbarSlot
+            {
+                CommandType = (RaptureHotbarModule.HotbarSlotType)commandType,
+                CommandId = (uint)displaySlot,
+            };
+
+            string outcome;
+            try
+            {
+                var result = hotbar->ExecuteSlot(&slot);
+                outcome = $"戻り値={result}";
+            }
+            catch (Exception ex)
+            {
+                outcome = $"例外 {ex.GetType().Name}";
+            }
+
+            var lockAfter = actionManager->AnimationLock;
+            var hpAfter = player == null ? 0u : player.CurrentHp;
+            var invAfter = *(ushort*)((byte*)director + DebugInventoryOffset + targetInvSlot * DebugInventoryStride);
+            var hit = lockAfter > 0f || hpAfter != hpBefore || invAfter != invBefore;
+            builder.AppendLine($"  CommandType={commandType}: {outcome} 硬直=0→{lockAfter:0.###} HP {hpBefore}→{hpAfter} インベントリ {invBefore}→{invAfter}{(hit ? "  <== 変化あり!" : "")}");
+
+            if (hit)
+            {
+                builder.AppendLine($"  CommandType={commandType} で一致、走査を停止します。");
+                break;
+            }
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("説明: すべての値に変化がない場合、クルーシブルアイテム欄は ExecuteSlot を経由しないため、addon callback 方式等への変更が必要です。");
+        return builder.ToString().TrimEnd();
+    }
+
+    public unsafe string TestCrucibleUseAction(int displaySlot)
+    {
+        var builder = new StringBuilder()
+            .AppendLine("種別: クルーシブルアイテム UseAction テスト")
+            .AppendLine("モード: ActionManager.UseAction(ActionType.Action, actionId) 経由でアイテムを使用（アイテムを消費します！）")
+            .AppendLine($"対象表示スロット: {displaySlot}")
+            .AppendLine($"TerritoryType: {DalamudApi.ClientState.TerritoryType}")
+            .AppendLine();
+
+        var actionManager = ActionManager.Instance();
+        var agentModule = AgentModule.Instance();
+        var agent = agentModule == null ? null : (byte*)agentModule->GetAgentByInternalId((AgentId)497);
+        var eventFramework = EventFramework.Instance();
+        var director = eventFramework == null ? null : eventFramework->GetInstanceContentDirector();
+        if (actionManager == null || agent == null || director == null || (int)director->InstanceContentType != 22)
+        {
+            builder.AppendLine("前提条件が満たされていません：闘獣練内にいる必要があります。");
+            return builder.ToString().TrimEnd();
+        }
+
+        if (!DalamudApi.SigScanner.TryScanText(DebugRefreshMappingSignature, out var refreshAddress))
+        {
+            builder.AppendLine("ネイティブシグネチャが見つかりません。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var refreshMapping = (delegate* unmanaged<byte*, void>)refreshAddress;
+        refreshMapping(agent);
+
+        if (displaySlot < 0 || displaySlot >= 10)
+        {
+            builder.AppendLine("表示スロットが範囲外です。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var entry = agent + DebugMappingOffset + displaySlot * DebugMappingStride;
+        var invSlot = *(uint*)entry;
+        var itemId = ((ushort*)entry)[2];
+        builder.AppendLine($"表示スロット {displaySlot}: inventorySlot={invSlot} itemId={itemId}");
+        if (itemId == 0)
+        {
+            builder.AppendLine("指定のスロットが空です。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var actionId = itemId is >= 76 and <= 104
+            ? 46959u + itemId - 76u
+            : 0u;
+        builder.AppendLine($"推定 ActionId={actionId}");
+        if (actionId == 0)
+        {
+            builder.AppendLine("現在のアイテムは Action マッピングの対象外です。");
+            return builder.ToString().TrimEnd();
+        }
+
+        if (actionManager->AnimationLock > 0f)
+        {
+            builder.AppendLine();
+            builder.AppendLine($"現在のアニメーション硬直={actionManager->AnimationLock:0.###}。硬直が切れてから再実行してください。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        var self = player == null ? null : (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)player.Address;
+        var selfTargetId = player?.GameObjectId ?? 0;
+
+        var statusAction = actionManager->GetActionStatus(ActionType.Action, actionId, selfTargetId);
+        builder.AppendLine($"GetActionStatus(ActionType.Action, {actionId}, selfTarget) = {statusAction}");
+        var statusNoTarget = actionManager->GetActionStatus(ActionType.Action, actionId, 0);
+        builder.AppendLine($"GetActionStatus(ActionType.Action, {actionId}, 0) = {statusNoTarget}");
+        builder.AppendLine($"CanUseActionOnTarget = {(self == null ? "self null" : FFXIVClientStructs.FFXIV.Client.Game.ActionManager.CanUseActionOnTarget(actionId, self).ToString())}");
+        builder.AppendLine($"GetActionInRangeOrLoS = {(self == null ? "self null" : FFXIVClientStructs.FFXIV.Client.Game.ActionManager.GetActionInRangeOrLoS(actionId, self, self).ToString())}");
+        builder.AppendLine();
+
+        foreach (var (label, targetCandidate) in new (string, ulong)[]
+                 {
+                     ("targetId=self", selfTargetId),
+                     ("targetId=0", 0),
+                 })
+        {
+            if (actionManager->AnimationLock > 0f)
+            {
+                builder.AppendLine($"[{label}] スキップ：アニメーション硬直={actionManager->AnimationLock:0.###}");
+                continue;
+            }
+
+            var hpBefore = player?.CurrentHp ?? 0;
+            var invBefore = *(ushort*)((byte*)director + DebugInventoryOffset + invSlot * DebugInventoryStride);
+            var lockBefore = actionManager->AnimationLock;
+            var used = actionManager->UseAction(ActionType.Action, actionId, targetCandidate);
+            builder.AppendLine($"[{label}] UseAction 戻り値={used}；硬直 {lockBefore:0.###}→{actionManager->AnimationLock:0.###}；HP {hpBefore}→{player?.CurrentHp ?? 0}；インベントリ {invBefore}→{*(ushort*)((byte*)director + DebugInventoryOffset + invSlot * DebugInventoryStride)}");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    public unsafe string TestExecuteSlotById(int hotbarId, int maxSlotId)
+    {
+        var builder = new StringBuilder()
+            .AppendLine("種別: ExecuteSlotById テスト")
+            .AppendLine("モード: 指定ホットバーを hotbarId/slotId で実行（アイテムを消費します！）")
+            .AppendLine($"ホットバー={hotbarId} スロット 0〜{maxSlotId}")
+            .AppendLine();
+
+        var hotbar = RaptureHotbarModule.Instance();
+        var actionManager = ActionManager.Instance();
+        var eventFramework = EventFramework.Instance();
+        var director = eventFramework == null ? null : eventFramework->GetInstanceContentDirector();
+        if (hotbar == null || actionManager == null || director == null || (int)director->InstanceContentType != 22)
+        {
+            builder.AppendLine("前提条件が満たされていません：闘獣練内にいる必要があります。");
+            return builder.ToString().TrimEnd();
+        }
+
+        if (actionManager->AnimationLock > 0f)
+        {
+            builder.AppendLine($"現在のアニメーション硬直={actionManager->AnimationLock:0.###}。硬直が切れてから再実行してください。");
+            return builder.ToString().TrimEnd();
+        }
+
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        var hpBefore = player?.CurrentHp ?? 0;
+        var lockBefore = actionManager->AnimationLock;
+        builder.AppendLine($"実行前 HP={hpBefore} 硬直={lockBefore:0.###}");
+        builder.AppendLine();
+
+        for (var slotId = 0; slotId <= maxSlotId; slotId++)
+        {
+            if (actionManager->AnimationLock > 0f)
+            {
+                builder.AppendLine($"  スロット{slotId}: スキップ（アニメーション硬直 {actionManager->AnimationLock:0.###}）");
+                continue;
+            }
+
+            var currentPointer = hotbar->GetSlotById((uint)hotbarId, (uint)slotId);
+            if (currentPointer == null)
+            {
+                builder.AppendLine($"  スロット{slotId}: GetSlotById が null を返しました");
+                continue;
+            }
+
+            var commandType = *(byte*)((byte*)currentPointer + 0xC7);
+            var commandId = *(uint*)((byte*)currentPointer + 0xB8);
+            var hpSlotBefore = player?.CurrentHp ?? 0;
+            var lockSlotBefore = actionManager->AnimationLock;
+            var result = hotbar->ExecuteSlotById((uint)hotbarId, (uint)slotId);
+            builder.AppendLine($"  スロット{slotId}: Type={commandType} Id={commandId} ExecuteSlotById戻り値={result}"
+                + $" 硬直{lockSlotBefore:0.###}→{actionManager->AnimationLock:0.###} HP {hpSlotBefore}→{player?.CurrentHp ?? 0}");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine($"実行後 HP={player?.CurrentHp ?? 0} 硬直={actionManager->AnimationLock:0.###}");
+        return builder.ToString().TrimEnd();
+    }
+
+    public unsafe string ScanHotbarsForCrucibleItems()
+    {
+        var builder = new StringBuilder()
+            .AppendLine("種別: ホットバークルーシブルアイテム走査")
+            .AppendLine("モード: 読み取り専用、RaptureHotbarModule の 0〜17 番ホットバー全スロットを走査")
+            .AppendLine("目的: クルーシブルアイテムが紐付けられている CommandType / ホットバー位置の特定")
+            .AppendLine();
+
+        var hotbar = RaptureHotbarModule.Instance();
+        if (hotbar == null)
+        {
+            builder.AppendLine("RaptureHotbarModule が利用できません。");
+            return builder.ToString().TrimEnd();
+        }
+
+        const int hotbarStride = 0xE8 * 16;
+        const int hotbarBase = 0xA0;
+        const int hotbarCount = 18;
+        const int slotStride = 0xE8;
+        var found = 0;
+        builder.AppendLine("非空スロットの走査（CommandType!=0 かつ CommandId!=0）:");
+        for (var hotbarId = 0; hotbarId < hotbarCount; hotbarId++)
+        {
+            var hotbarPtr = (byte*)hotbar + hotbarBase + hotbarId * hotbarStride;
+            for (var slotId = 0; slotId < 16; slotId++)
+            {
+                var slotPtr = hotbarPtr + slotId * slotStride;
+                var commandId = *(uint*)(slotPtr + 0xB8);
+                var commandType = *(byte*)(slotPtr + 0xC7);
+                var apparentActionId = *(uint*)(slotPtr + 0xC0);
+                var apparentSlotType = *(byte*)(slotPtr + 0xC9);
+                if (commandId == 0 && commandType == 0)
+                {
+                    continue;
+                }
+
+                var isCrucible = commandId is >= 76 and <= 143;
+                if (!isCrucible)
+                {
+                    continue;
+                }
+
+                found++;
+                builder.AppendLine($"  ホットバー{hotbarId} スロット{slotId}: CommandType={commandType} CommandId={commandId}"
+                    + $" | ApparentType={apparentSlotType} ApparentId={apparentActionId}");
+            }
+        }
+
+        if (found == 0)
+        {
+            builder.AppendLine("  いずれのホットバーにも CommandId が 76〜143 のスロットは見つかりませんでした。");
+            builder.AppendLine();
+            builder.AppendLine("結論: クルーシブルアイテムバーは RaptureHotbarModule に紐付いていません。ActionManager.UseAction 等の実行方式を使用する必要があります。");
+        }
+        else
+        {
+            builder.AppendLine();
+            builder.AppendLine($"合計 {found} 個のクルーシブルアイテム候補スロットが見つかりました。");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("付録: すべての非空スロットの CommandType 分布（新規列挙の確認用）:");
+        var typeCounts = new Dictionary<byte, int>();
+        for (var hotbarId = 0; hotbarId < hotbarCount; hotbarId++)
+        {
+            var hotbarPtr = (byte*)hotbar + hotbarBase + hotbarId * hotbarStride;
+            for (var slotId = 0; slotId < 16; slotId++)
+            {
+                var slotPtr = hotbarPtr + slotId * slotStride;
+                var commandId = *(uint*)(slotPtr + 0xB8);
+                var commandType = *(byte*)(slotPtr + 0xC7);
+                if (commandId == 0 && commandType == 0)
+                {
+                    continue;
+                }
+
+                typeCounts[commandType] = typeCounts.GetValueOrDefault(commandType) + 1;
+            }
+        }
+
+        foreach (var kv in typeCounts.OrderBy(k => k.Key))
+        {
+            builder.AppendLine($"  CommandType={kv.Key}: {kv.Value} 個の非空スロット");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine("CommandType=36 の全スロット（クルーシブルアイテムバー候補）:");
+        for (var hotbarId = 0; hotbarId < hotbarCount; hotbarId++)
+        {
+            var hotbarPtr = (byte*)hotbar + hotbarBase + hotbarId * hotbarStride;
+            for (var slotId = 0; slotId < 16; slotId++)
+            {
+                var slotPtr = hotbarPtr + slotId * slotStride;
+                var commandType = *(byte*)(slotPtr + 0xC7);
+                if (commandType != 36)
+                {
+                    continue;
+                }
+
+                var commandId = *(uint*)(slotPtr + 0xB8);
+                var apparentType = *(byte*)(slotPtr + 0xC9);
+                var apparentId = *(uint*)(slotPtr + 0xC0);
+                var iconId = *(uint*)(slotPtr + 0xD0);
+                builder.AppendLine($"  ホットバー{hotbarId} スロット{slotId}: CommandId={commandId} ApparentType={apparentType} ApparentId={apparentId} IconId={iconId}");
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    public unsafe string TestExecuteRealCrucibleSlot(int hotbarId, int slotId)
+    {
+        var builder = new StringBuilder()
+            .AppendLine("種別: 実機クルーシブルアイテムホットバースロット実行")
+            .AppendLine("モード: RaptureHotbarModule 内に既存の HotbarSlot ポインタを直接使用して ExecuteSlot を呼び出し（アイテムを消費します！）")
+            .AppendLine($"ホットバー={hotbarId} スロット={slotId}")
+            .AppendLine();
+
+        var hotbar = RaptureHotbarModule.Instance();
+        var actionManager = ActionManager.Instance();
+        if (hotbar == null || actionManager == null)
+        {
+            builder.AppendLine("RaptureHotbarModule または ActionManager が利用できません。");
+            return builder.ToString().TrimEnd();
+        }
+
+        if (actionManager->AnimationLock > 0f)
+        {
+            builder.AppendLine($"現在のアニメーション硬直={actionManager->AnimationLock:0.###}。硬直が切れてから再実行してください。");
+            return builder.ToString().TrimEnd();
+        }
+
+        const int hotbarStride = 0xE8 * 16;
+        const int hotbarBase = 0xA0;
+        const int slotStride = 0xE8;
+        var slotPtr = (RaptureHotbarModule.HotbarSlot*)((byte*)hotbar + hotbarBase + hotbarId * hotbarStride + slotId * slotStride);
+        builder.AppendLine($"実スロット: CommandType={*(byte*)((byte*)slotPtr + 0xC7)} CommandId={*(uint*)((byte*)slotPtr + 0xB8)}"
+            + $" ApparentType={*(byte*)((byte*)slotPtr + 0xC9)} ApparentId={*(uint*)((byte*)slotPtr + 0xC0)}"
+            + $" IconId={*(uint*)((byte*)slotPtr + 0xD0)}");
+
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        var hpBefore = player?.CurrentHp ?? 0;
+        var lockBefore = actionManager->AnimationLock;
+
+        var result = hotbar->ExecuteSlot(slotPtr);
+        builder.AppendLine($"ExecuteSlot(実ポインタ) 戻り値={result}；硬直 {lockBefore:0.###}→{actionManager->AnimationLock:0.###}；HP {hpBefore}→{player?.CurrentHp ?? 0}");
+        builder.AppendLine("説明: 硬直が変化した場合、実スロット実行は有効であり、GetSlotById でポインタ取得後に ExecuteSlot を呼ぶ方式が使えます。");
         return builder.ToString().TrimEnd();
     }
 

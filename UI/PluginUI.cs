@@ -120,6 +120,7 @@ public sealed class PluginUI
         RefreshGaugeSnapshot();
         DrawAutoCaptureOverlay();
         DrawPetPartyOverlay();
+        DriveUseActionScan();
         if (!isMainWindowOpen)
         {
             return;
@@ -2986,6 +2987,11 @@ public sealed class PluginUI
                 configuration.AutoRecoveryItemHpThreshold = Math.Clamp(recoveryThreshold, 1f, 100f);
                 configuration.Save();
             }
+            DrawCompactSettingCheckbox(
+                "回復薬エコー通知",
+                "低HP時の自動回復薬使用の成功または失敗時にエコーチャットで通知します。成功判定は要求後3秒以内の自身HP上昇に基づきます。デフォルトは無効です。",
+                nameof(configuration.AutoRecoveryItemDiagnosticsEnabled),
+                configuration.AutoRecoveryItemDiagnosticsEnabled);
         }
 
         if (compactFinalStrike)
@@ -3084,6 +3090,7 @@ public sealed class PluginUI
             case nameof(configuration.AutoReleaseEnabled): configuration.AutoReleaseEnabled = !configuration.AutoReleaseEnabled; break;
             case nameof(configuration.AutoSafeShieldEnabled): configuration.AutoSafeShieldEnabled = !configuration.AutoSafeShieldEnabled; break;
             case nameof(configuration.AutoRecoveryItemEnabled): configuration.AutoRecoveryItemEnabled = !configuration.AutoRecoveryItemEnabled; break;
+            case nameof(configuration.AutoRecoveryItemDiagnosticsEnabled): configuration.AutoRecoveryItemDiagnosticsEnabled = !configuration.AutoRecoveryItemDiagnosticsEnabled; break;
         }
         configuration.Save();
     }
@@ -3250,9 +3257,8 @@ public sealed class PluginUI
         {
             SetFinalStrikeEnabled(enabledProperty, enabled);
         }
-        ImGui.SameLine();
         var clampedThreshold = Math.Clamp(threshold, 1f, 100f);
-        ImGui.SetNextItemWidth(120f);
+        SetThresholdInputLayout();
         if (ImGui.InputFloat($"##{thresholdProperty}", ref clampedThreshold, 1f, 5f, "%.0f%%"))
         {
             SetFinalStrikeThreshold(thresholdProperty, clampedThreshold);
@@ -3310,9 +3316,8 @@ public sealed class PluginUI
             SetReleaseEnabled(enabledProperty, enabled);
         }
 
-        ImGui.SameLine();
         threshold = Math.Clamp(threshold, 1f, 100f);
-        ImGui.SetNextItemWidth(100f);
+        SetThresholdInputLayout();
         if (ImGui.InputFloat($"##{thresholdProperty}", ref threshold, 1f, 5f, "%.0f%%"))
         {
             SetReleaseThreshold(thresholdProperty, threshold);
@@ -3321,6 +3326,28 @@ public sealed class PluginUI
         {
             ImGui.SetTooltip($"ターゲットHPがこの閾値以下のときに {label}の「はなつ」を許可します（範囲: 1%〜100%）。");
         }
+    }
+
+    private static void SetThresholdInputLayout()
+    {
+        var style = ImGui.GetStyle();
+        var inputWidth = Math.Max(
+            100f,
+            ImGui.CalcTextSize("100%").X
+            + style.FramePadding.X * 2f
+            + ImGui.GetFrameHeight() * 2f
+            + style.ItemInnerSpacing.X * 2f);
+        var sameLineWidth = ImGui.GetWindowPos().X
+            + ImGui.GetWindowContentRegionMax().X
+            - ImGui.GetItemRectMax().X
+            - style.ItemSpacing.X;
+
+        if (sameLineWidth >= inputWidth)
+        {
+            ImGui.SameLine();
+        }
+
+        ImGui.SetNextItemWidth(inputWidth);
     }
 
     private void SetReleaseEnabled(string propertyName, bool value)
@@ -3632,6 +3659,9 @@ public sealed class PluginUI
                 case nameof(configuration.AutoBeastSkillEnabled):
                     configuration.AutoBeastSkillEnabled = value;
                     break;
+                case nameof(configuration.AutoRecoveryItemDiagnosticsEnabled):
+                    configuration.AutoRecoveryItemDiagnosticsEnabled = value;
+                    break;
             }
             configuration.Save();
         }
@@ -3685,7 +3715,7 @@ public sealed class PluginUI
         DrawDebugActionRow(
             "##DebugProjectDataType",
             ref debugProjectDataType,
-            "魔獣を調教せし者\0現在の全クエスト状態\0魔獣使いクエスト一覧\0魔獣図鑑コンテンツID\0自動「とらえる」ID\0魔獣属性マップ\0魔獣図鑑クライアントデータ\0おすすめ装備アイテムID\0魔獣回復薬スキャン\0コンテンツ専用アイテムコンテナスキャン\0XBM画面スキャン\0XBMアイテム構造\0闘獣アイテム一覧\0魔獣レベル経験値構造\0闘獣リザルトレベル経験値\0魔獣編成構造\0魔獣使い育成データモジュール\0",
+            "魔獣を調教せし者\0現在の全クエスト状態\0魔獣使いクエスト一覧\0魔獣図鑑コンテンツID\0自動「とらえる」ID\0魔獣属性マップ\0魔獣図鑑クライアントデータ\0おすすめ装備アイテムID\0魔獣回復薬スキャン\0コンテンツ専用アイテムコンテナスキャン\0XBM画面スキャン\0XBMアイテム構造\0闘獣アイテム一覧\0魔獣レベル経験値構造\0闘獣リザルトレベル経験値\0魔獣編成構造\0魔獣使い育成データモジュール\0クルーシブルアイテムExecuteSlotテスト(0番スロット消費)\0クルーシブルアイテムUseActionテスト(0番スロット消費)\0ホットバークルーシブルアイテム走査\0実機クルーシブルホットバースロット実行(アイテム消費)\0ExecuteSlotByIdテスト(ホットバー2、アイテム消費)\0",
             "読み込み##DebugProjectData",
             RunDebugProjectData);
 
@@ -3697,6 +3727,9 @@ public sealed class PluginUI
             "魔獣使いジョブHUD生データ\0現在のターゲット状態\0現在のコンボ状態\0連携検証データ\0現在のキャラクター\0現在の座標\0「とらえる」判定\0自動戦闘状態\0スキルシーケンス検証データ\0",
             "読み込み##DebugCurrentState",
             RunDebugCurrentState);
+
+        ImGui.Spacing();
+        DrawUseActionScanRow();
 
         ImGui.Separator();
         if (ImGui.BeginChild("DebugResult", Vector2.Zero, true))
@@ -3738,6 +3771,35 @@ public sealed class PluginUI
         });
     }
 
+    private void DrawUseActionScanRow()
+    {
+        ImGui.SetNextItemWidth(Math.Max(120f, ImGui.GetContentRegionAvail().X - 72f));
+        ImGui.Text($"ActionId 走査: {(debugDataService.IsUseActionScanActive ? "実行中..." : "待機中")}");
+        ImGui.SameLine();
+        if (ImGui.Button("0番スロット ActionId 46959〜46980 スキャン##StartUseActionScan"))
+        {
+            SetDebugResult(debugDataService.StartUseActionScan(0, 46959, 46980));
+        }
+
+        if (ImGui.Button(debugDataService.IsCaptureActive
+                ? "クルーシブルクリックキャプチャ停止##StopCapture"
+                : "クルーシブルクリックキャプチャ開始##StartCapture"))
+        {
+            SetDebugResult(debugDataService.IsCaptureActive
+                ? debugDataService.StopCrucibleClickCapture()
+                : debugDataService.StartCrucibleClickCapture());
+        }
+    }
+
+    private void DriveUseActionScan()
+    {
+        debugDataService.UpdateUseActionScan();
+        while (debugDataService.TryTakeUseActionScanLog(out var log))
+        {
+            DalamudApi.ChatGui.Print($"[魔獣使い回復薬診断] {log}");
+        }
+    }
+
     private void RunDebugProjectData()
     {
         SetDebugResult(debugProjectDataType switch
@@ -3759,6 +3821,11 @@ public sealed class PluginUI
             14 => debugDataService.GetBeastResultProgressionProbe(),
             15 => debugDataService.GetPetPartyStructureProbe(),
             16 => debugDataService.GetXbmModuleProbe(),
+            17 => debugDataService.TestCrucibleExecuteSlot(0),
+            18 => debugDataService.TestCrucibleUseAction(0),
+            19 => debugDataService.ScanHotbarsForCrucibleItems(),
+            20 => debugDataService.TestExecuteRealCrucibleSlot(2, 0),
+            21 => debugDataService.TestExecuteSlotById(2, 11),
             _ => "未知のプロジェクトデータ種別。",
         });
     }

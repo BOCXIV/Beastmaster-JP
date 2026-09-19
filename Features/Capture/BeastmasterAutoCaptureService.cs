@@ -36,7 +36,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
     private readonly BeastmasterConfiguration configuration;
     private readonly BeastmasterSequenceService sequenceService;
     private readonly BeastmasterRuleService ruleService;
-    private readonly BeastmasterCrucibleItemService crucibleItemService = new();
+    private readonly BeastmasterCrucibleItemService crucibleItemService;
     private readonly uint smashActionId;
     private readonly uint biteActionId;
     private readonly uint shieldActionId;
@@ -58,6 +58,12 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
     private DateTime nextFinalStrikeAttemptUtc = DateTime.MinValue;
     private DateTime nextSafeShieldAttemptUtc = DateTime.MinValue;
     private DateTime resurrectionProtectionUntilUtc = DateTime.MinValue;
+    private DateTime recoveryDiagnosticDeadlineUtc = DateTime.MinValue;
+    private DateTime lastRecoveryFailureChatUtc = DateTime.MinValue;
+    private uint recoveryDiagnosticStartHp;
+    private ushort recoveryDiagnosticItemId;
+    private string recoveryDiagnosticDetail = string.Empty;
+    private string lastRecoveryFailureReason = string.Empty;
     private bool playerWasDead;
     private bool reportedMissingData;
     private int whistleRotationStage = -1;
@@ -160,11 +166,13 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
     public BeastmasterAutoCaptureService(
         BeastmasterConfiguration configuration,
         BeastmasterSequenceService sequenceService,
-        BeastmasterRuleService ruleService)
+        BeastmasterRuleService ruleService,
+        BeastmasterCrucibleItemService crucibleItemService)
     {
         this.configuration = configuration;
         this.sequenceService = sequenceService;
         this.ruleService = ruleService;
+        this.crucibleItemService = crucibleItemService;
         // Action and status RowId are language-independent; names differ by client locale.
         smashActionId = SmashActionId;
         biteActionId = BiteActionId;
@@ -309,6 +317,11 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         }
 
         var actionId = BeastmasterUltimateActionId;
+        if (BeastmasterFinalStrikeLock.IsBlocked(actionId, DateTime.UtcNow))
+        {
+            ManualActionStatus = BeastmasterFinalStrikeLock.GetBlockReason(actionId, DateTime.UtcNow);
+            return false;
+        }
         if (!BeastmasterActionHelper.IsPlayerInActionRange(
                 DalamudApi.ObjectTable.LocalPlayer!,
                 target,
@@ -352,6 +365,11 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         ulong targetId,
         uint actionStatus)
     {
+        if (BeastmasterFinalStrikeLock.IsBlocked(actionId, DateTime.UtcNow))
+        {
+            return false;
+        }
+
         return actionStatus == 0
             && actionManager->UseAction(ActionType.Action, actionId, targetId);
     }
@@ -362,6 +380,8 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
     private unsafe void OnFrameworkUpdate(IFramework framework)
     {
         _ = framework;
+        var now = DateTime.UtcNow;
+        UpdateRecoveryItemDiagnostic(now);
         UpdateBattleLogState(DalamudApi.Condition[ConditionFlag.InCombat]);
         if (!configuration.AutoCaptureEnabled)
         {
@@ -392,13 +412,25 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             return;
         }
 
+        crucibleItemService.ProcessPendingRequest(now);
+        crucibleItemService.UpdateExecutionProbe(now);
+        FlushExecutionProbes();
+        HandleRecoveryItemDispatch(now);
+        ruleService.ProcessCrucibleDispatchResults(now);
+        if (crucibleItemService.HasPendingRequest)
+        {
+            StatusText = "クルーシブルアイテム実行待機中";
+            NextActionName = "クルーシブルアイテム";
+            NextActionReason = "アクション硬直解除またはホットバースロット同期待機中";
+            return;
+        }
+
         if (!configuration.WhistleRotationEnabled
             && (whistleRotationStage >= 0 || whistleRotationWaitingForCooldown))
         {
             ResetWhistleRotation("無効");
         }
 
-        var now = DateTime.UtcNow;
         if (now < nextCheckUtc)
         {
             return;
@@ -571,21 +603,26 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             && DalamudApi.Condition[ConditionFlag.InCombat]
             && IsArenaTerritory(DalamudApi.ClientState.TerritoryType)
             && playerHpPercent < configuration.AutoRecoveryItemHpThreshold
-            && crucibleItemService.TryUseBestRecoveryItem(player, target, now, out var recoveryItemId))
+            && recoveryDiagnosticItemId == 0)
         {
-            StatusText = "自動で回復薬を使用中...";
-            NextActionName = recoveryItemId switch
+            if (!crucibleItemService.TryUseBestRecoveryItem(player, target, now, out var recoveryItemId))
             {
-                140 => "魔獣回復薬セット",
-                134 => "吸血鬼の牙",
-                135 => "魔獣吸血薬",
-                80 or 81 or 82 => $"{recoveryItemId - 79}級魔獣薬粉",
-                _ => $"{recoveryItemId - 75}級魔獣回復薬",
-            };
-            NextActionReason = $"自身のHP {playerHpPercent:0.#}% が閾値 {configuration.AutoRecoveryItemHpThreshold:0.#}% 未満";
-            nextActionUtc = now.AddMilliseconds(700);
-            RecordBattleLog($"アクションをリクエストしました: {NextActionName}（XBMItem {recoveryItemId}）");
-            return;
+                ReportRecoveryItemFailure(
+                    player,
+                    playerHpPercent,
+                    "回復薬",
+                    $"{crucibleItemService.LastFailureReason}{crucibleItemService.LastDiagnostic}",
+                    now);
+            }
+            else
+            {
+                StatusText = "自動で回復薬を使用中...";
+                NextActionName = GetRecoveryItemName(recoveryItemId);
+                NextActionReason = $"自身のHP {playerHpPercent:0.#}% が閾値 {configuration.AutoRecoveryItemHpThreshold:0.#}% 未満";
+                nextActionUtc = now.AddMilliseconds(700);
+                RecordBattleLog($"アクションをリクエストしました: {NextActionName}（XBMItem {recoveryItemId}）");
+                return;
+            }
         }
 
         if (ruleService.TryHandle(actionManager, player, target, now))
@@ -861,6 +898,137 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
     private static bool IsArenaTerritory(uint territoryId)
         => territoryId is >= 1339 and <= 1343;
 
+    private void FlushExecutionProbes()
+    {
+        if (!configuration.AutoRecoveryItemDiagnosticsEnabled)
+        {
+            return;
+        }
+
+        var printed = 0;
+        while (printed < 4 && crucibleItemService.TryTakeExecutionProbe(out var probe))
+        {
+            DalamudApi.ChatGui.Print($"[魔獣回復薬診断 {DateTime.Now:HH:mm:ss}] {probe}");
+            printed++;
+        }
+    }
+
+    private void UpdateRecoveryItemDiagnostic(DateTime now)
+    {
+        if (recoveryDiagnosticItemId == 0)
+        {
+            return;
+        }
+
+        if (!configuration.AutoRecoveryItemDiagnosticsEnabled)
+        {
+            ClearRecoveryItemDiagnostic();
+            return;
+        }
+
+        var player = DalamudApi.ObjectTable.LocalPlayer;
+        if (player == null || player.MaxHp == 0)
+        {
+            PrintRecoveryItemDiagnostic(0, 0, recoveryDiagnosticItemId, false, "キャラクター状態が利用不可");
+            ClearRecoveryItemDiagnostic();
+            return;
+        }
+
+        if (player.CurrentHp > recoveryDiagnosticStartHp)
+        {
+            PrintRecoveryItemDiagnostic(player.CurrentHp, player.MaxHp, recoveryDiagnosticItemId, true, string.Empty);
+            ClearRecoveryItemDiagnostic();
+            return;
+        }
+
+        if (now >= recoveryDiagnosticDeadlineUtc)
+        {
+            PrintRecoveryItemDiagnostic(player.CurrentHp, player.MaxHp, recoveryDiagnosticItemId, false, "要求後3秒以内にHPが上昇しませんでした");
+            ClearRecoveryItemDiagnostic();
+        }
+    }
+
+    private void HandleRecoveryItemDispatch(DateTime now)
+    {
+        if (crucibleItemService.TryTakeRecoveryDispatchFailure(out var failedItemId, out var failureReason))
+        {
+            var player = DalamudApi.ObjectTable.LocalPlayer;
+            if (player != null && player.MaxHp > 0)
+            {
+                var hpPercent = player.CurrentHp * 100f / player.MaxHp;
+                ReportRecoveryItemFailure(player, hpPercent, GetRecoveryItemName(failedItemId), failureReason, now);
+            }
+            return;
+        }
+
+        if (!crucibleItemService.TryTakeDispatchedRecoveryItem(out var itemId)
+            || !configuration.AutoRecoveryItemDiagnosticsEnabled)
+        {
+            return;
+        }
+
+        var localPlayer = DalamudApi.ObjectTable.LocalPlayer;
+        if (localPlayer == null || localPlayer.MaxHp == 0)
+        {
+            PrintRecoveryItemDiagnostic(0, 0, itemId, false, "実行後のキャラクター状態が利用不可");
+            return;
+        }
+
+        recoveryDiagnosticItemId = itemId;
+        recoveryDiagnosticStartHp = localPlayer.CurrentHp;
+        recoveryDiagnosticDeadlineUtc = now.AddSeconds(3);
+        recoveryDiagnosticDetail = crucibleItemService.LastDiagnostic;
+    }
+
+    private void ReportRecoveryItemFailure(
+        IBattleChara player,
+        float hpPercent,
+        string itemName,
+        string reason,
+        DateTime now)
+    {
+        if (!configuration.AutoRecoveryItemDiagnosticsEnabled
+            || (reason == lastRecoveryFailureReason && now - lastRecoveryFailureChatUtc < TimeSpan.FromSeconds(2)))
+        {
+            return;
+        }
+
+        lastRecoveryFailureReason = reason;
+        lastRecoveryFailureChatUtc = now;
+        DalamudApi.ChatGui.Print(
+            $"[魔獣回復薬診断 {DateTime.Now:HH:mm:ss}] 現在のHP {player.CurrentHp}/{player.MaxHp}（{hpPercent:0.#}%）、{itemName}の使用失敗（{reason}）");
+    }
+
+    private void PrintRecoveryItemDiagnostic(uint currentHp, uint maxHp, ushort itemId, bool success, string reason)
+    {
+        var hpPercent = maxHp == 0 ? 0f : currentHp * 100f / maxHp;
+        var result = success ? "成功" : $"失敗（{reason}）";
+        DalamudApi.ChatGui.Print(
+            $"[魔獣回復薬診断 {DateTime.Now:HH:mm:ss}] 現在のHP {currentHp}/{maxHp}（{hpPercent:0.#}%）、{GetRecoveryItemName(itemId)}{result}"
+            + $"\n  実行詳細：{recoveryDiagnosticDetail}"
+            + $"\n  アイテム状態：{crucibleItemService.DescribeRecoveryItemSlot(itemId)}");
+    }
+
+    private void ClearRecoveryItemDiagnostic()
+    {
+        recoveryDiagnosticItemId = 0;
+        recoveryDiagnosticStartHp = 0;
+        recoveryDiagnosticDeadlineUtc = DateTime.MinValue;
+        recoveryDiagnosticDetail = string.Empty;
+    }
+
+    private static string GetRecoveryItemName(ushort itemId)
+        => itemId switch
+        {
+            140 => "魔獣回復薬セット",
+            139 => "星の砂",
+            134 => "吸血鬼の牙",
+            135 => "魔獣吸血薬",
+            80 or 81 or 82 => $"{itemId - 79}級魔獣薬粉",
+            76 or 77 or 78 or 79 => $"{itemId - 75}級魔獣回復薬",
+            _ => $"クルーシブル回復アイテム {itemId}",
+        };
+
     private void ResetCaptureState()
     {
         captureTargetId = 0;
@@ -945,8 +1113,13 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             && TryGetFinalStrikeSettings(gauge.WhistleIndex, out var finalEnabled, out var finalThreshold))
         {
             var finalStatus = actionManager->GetActionStatus(ActionType.Action, FinalStrikeActionId, target.GameObjectId);
-            Add("最後の一撃", finalEnabled && gauge.SummonMaxHp > 0 && gauge.SummonHpPercent <= finalThreshold && finalStatus == 0,
-                !finalEnabled ? "現在の獣笛設定が無効" : gauge.SummonMaxHp == 0 ? "魔獣なし" : gauge.SummonHpPercent > finalThreshold ? $"魔獣HP {gauge.SummonHpPercent:0.#}%/{finalThreshold:0.#}%" : finalStatus == 0 ? "" : $"コード {finalStatus}");
+            var releaseBlocked = BeastmasterFinalStrikeLock.IsBlocked(FinalStrikeActionId, now);
+            Add("最後の一撃", finalEnabled && gauge.SummonMaxHp > 0 && gauge.SummonHpPercent <= finalThreshold && finalStatus == 0 && !releaseBlocked,
+                !finalEnabled ? "現在の獣笛設定が無効"
+                    : gauge.SummonMaxHp == 0 ? "魔獣なし"
+                    : gauge.SummonHpPercent > finalThreshold ? $"魔獣HP {gauge.SummonHpPercent:0.#}%/{finalThreshold:0.#}%"
+                    : releaseBlocked ? BeastmasterFinalStrikeLock.GetBlockReason(FinalStrikeActionId, now)
+                    : finalStatus == 0 ? "" : $"コード {finalStatus}");
         }
 
         if (configuration.PhysicalThirdFormEnabled || configuration.MagicalThirdFormEnabled)
@@ -1223,6 +1396,13 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         }
 
         var actionId = BeastmasterUltimateActionId;
+        if (BeastmasterFinalStrikeLock.IsBlocked(actionId, now))
+        {
+            NextActionName = GetActionName(actionId);
+            NextActionReason = BeastmasterFinalStrikeLock.GetBlockReason(actionId, now);
+            return false;
+        }
+
         if (!BeastmasterActionHelper.IsPlayerInActionRange(
                 player,
                 target,
@@ -1386,6 +1566,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         }
 
         ReportAutoOutputSuccess(NextActionName, availability.ActionId);
+        BeastmasterFinalStrikeLock.RecordRelease(now);
         nextReleaseAttemptUtc = now.AddMilliseconds(500);
         nextActionUtc = now.AddMilliseconds(700);
         return true;
@@ -1431,6 +1612,15 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
         if (now < nextFinalStrikeAttemptUtc)
         {
+            return false;
+        }
+
+        if (BeastmasterFinalStrikeLock.IsBlocked(FinalStrikeActionId, now))
+        {
+            NextActionName = GetActionName(FinalStrikeActionId);
+            NextActionReason = BeastmasterFinalStrikeLock.GetBlockReason(FinalStrikeActionId, now);
+            ReportAutoOutputDiagnostic(NextActionName, NextActionReason, "release-lock");
+            nextFinalStrikeAttemptUtc = now.AddMilliseconds(250);
             return false;
         }
 
@@ -1508,6 +1698,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         }
 
         ReportAutoOutputSuccess(NextActionName, FinalStrikeActionId);
+        BeastmasterFinalStrikeLock.RecordFinalStrike(now);
         nextFinalStrikeAttemptUtc = now.AddMilliseconds(700);
         nextActionUtc = now.AddMilliseconds(700);
         return true;
@@ -1767,6 +1958,15 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         }
 
         StatusText = "呼笛ローテーション実行中...";
+        if (actionId == BeastmasterReleaseBaseActionId)
+        {
+            BeastmasterFinalStrikeLock.RecordRelease(now);
+        }
+        else if (actionId == FinalStrikeActionId)
+        {
+            BeastmasterFinalStrikeLock.RecordFinalStrike(now);
+        }
+
         whistleRotationNextActionUtc = now.AddMilliseconds(actionId == BeastmasterReleaseBaseActionId ? 700 : 350);
         if (whistleRotationStage == 7)
         {
