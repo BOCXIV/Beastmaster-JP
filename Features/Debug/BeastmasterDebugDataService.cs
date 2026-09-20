@@ -1105,7 +1105,7 @@ public sealed class BeastmasterDebugDataService
 
         var builder = new StringBuilder()
             .AppendLine("種別: 魔獣回復薬スキャン")
-            .AppendLine("クルーシブル回復類 内部ID: 回復薬1〜4級=76〜79、薬粉1〜3級=80〜82、吸血薬=135、セット=140")
+            .AppendLine("クルーシブル回復アイテム 内部ID: ビーストポーションG1〜G4=76〜79、ビーストパウダーG1〜G3=80〜82、魔獣の吸血薬=135、ビーストポーションキット=140")
             .AppendLine("スキャン対象コンテナ: Inventory1〜Inventory4")
             .AppendLine();
         if (candidates.Length == 0)
@@ -1142,7 +1142,7 @@ public sealed class BeastmasterDebugDataService
         var builder = new StringBuilder()
             .AppendLine("種別: コンテンツ専用アイテムコンテナスキャン")
             .AppendLine("モード: 読み取り専用（アイテム使用・メモリ書き込みなし）")
-            .AppendLine("目的: 闘獣塔アイテム等の ContentInventoryManager コンテナの探索")
+            .AppendLine("目的: 闘獣練アイテム等の ContentInventoryManager コンテナの探索")
             .AppendLine($"TerritoryType: {DalamudApi.ClientState.TerritoryType}")
             .AppendLine($"InCombat: {DalamudApi.Condition[ConditionFlag.InCombat]}")
             .AppendLine();
@@ -1186,13 +1186,13 @@ public sealed class BeastmasterDebugDataService
 
         if (containerCount == 0)
         {
-            builder.AppendLine("現在参照可能な ContentInventoryManager コンテナが見つかりません。闘獣塔に入り、専用アイテム画面を開いた状態で再度実行してください。");
+            builder.AppendLine("現在参照可能な ContentInventoryManager コンテナが見つかりません。闘獣練に入り、専用アイテム画面を開いた状態で再度実行してください。");
         }
 
         builder.AppendLine()
             .AppendLine($"検出コンテナ数: {containerCount}")
             .AppendLine($"非空スロット数: {nonEmptySlotCount}")
-            .AppendLine("ヒント: 回復薬の ItemId / 数量が含まれるスキャン結果をご報告ください。闘獣塔アイテムコンテナの確認に使用します。このスキャンではアイテムの使用可否は判定しません。");
+            .AppendLine("ヒント: 回復アイテムの ItemId / 数量が含まれるスキャン結果をご報告ください。闘獣練アイテムコンテナの確認に使用します。このスキャンではアイテムの使用可否は判定しません。");
 
         return builder.ToString().TrimEnd();
     }
@@ -1202,7 +1202,7 @@ public sealed class BeastmasterDebugDataService
         var builder = new StringBuilder()
             .AppendLine("種別: XBM Agent / AddOn スキャン")
             .AppendLine("モード: 読み取り専用（コールバック発火・アイテム使用・メモリ書き込みなし）")
-            .AppendLine("目的: 闘獣塔・魔獣使い画面内の専用アイテムデータの探索")
+            .AppendLine("目的: 闘獣練・魔獣使い画面内の専用アイテムデータの探索")
             .AppendLine($"TerritoryType: {DalamudApi.ClientState.TerritoryType}")
             .AppendLine($"InCombat: {DalamudApi.Condition[ConditionFlag.InCombat]}")
             .AppendLine();
@@ -1242,12 +1242,12 @@ public sealed class BeastmasterDebugDataService
         {
             foreach (var item in new[]
             {
-                (Id: 76u, Name: "1級魔獣回復薬"),
-                (Id: 77u, Name: "2級魔獣回復薬"),
-                (Id: 78u, Name: "3級魔獣回復薬"),
-                (Id: 243136u, Name: "1級回復薬アイコン"),
-                (Id: 243137u, Name: "2級回復薬アイコン"),
-                (Id: 243138u, Name: "3級回復薬アイコン"),
+                (Id: 76u, Name: "ビーストポーションG1"),
+                (Id: 77u, Name: "ビーストポーションG2"),
+                (Id: 78u, Name: "ビーストポーションG3"),
+                (Id: 243136u, Name: "ビーストポーションG1アイコン"),
+                (Id: 243137u, Name: "ビーストポーションG2アイコン"),
+                (Id: 243138u, Name: "ビーストポーションG3アイコン"),
             })
             {
                 var itemStatus = actionManager->GetActionStatus(ActionType.Item, item.Id, 0);
@@ -1355,7 +1355,7 @@ public sealed class BeastmasterDebugDataService
         if (addon.IsNull || !addon.IsVisible)
         {
             builder.AppendLine("XBMContentsMainHUD が存在しないか非表示です。");
-            builder.AppendLine("ヒント: 先に闘獣塔に入り、専用アイテム画面を開いてください。");
+            builder.AppendLine("ヒント: 先に闘獣練に入り、専用アイテム画面を開いてください。");
             return builder.ToString().TrimEnd();
         }
 
@@ -1533,7 +1533,7 @@ public sealed class BeastmasterDebugDataService
             .AppendLine($"魔獣技力: {gauge.BeastPower}/250")
             .AppendLine($"ビーストハート: {gauge.BeastHeartStacks} スタック")
             .AppendLine($"ビーストソウル: {gauge.BeastSoulStacks} スタック")
-            .AppendLine($"現在の呼笛: {(gauge.WhistleIndex is >= 1 and <= 3 ? $"{gauge.WhistleIndex}号" : "未召喚")}");
+            .AppendLine($"現在の呼び笛: {(gauge.WhistleIndex is >= 1 and <= 3 ? $"{gauge.WhistleIndex}号" : "未召喚")}");
 
         var entry = gauge.SummonEntry;
         if (entry == null)
@@ -1809,7 +1809,7 @@ public sealed class BeastmasterDebugDataService
             .AppendLine($"プレイヤーHP: {(player == null ? "未ロード" : $"{player.CurrentHp}/{player.MaxHp}")}")
             .AppendLine($"プレイヤー詠唱中: {player?.IsCasting}")
             .AppendLine($"現在のターゲット: {target?.Name.TextValue ?? "なし"} | GameObjectId={(target?.GameObjectId.ToString() ?? "0")}")
-            .AppendLine($"現在の呼笛: {(gauge.WhistleIndex is >= 1 and <= 3 ? $"{gauge.WhistleIndex}号呼笛" : "未召喚")}")
+            .AppendLine($"現在の呼び笛: {(gauge.WhistleIndex is >= 1 and <= 3 ? $"{gauge.WhistleIndex}号呼び笛" : "未召喚")}")
             .AppendLine($"現在の使役獣: {(gauge.SummonEntry?.Name ?? gauge.SummonName)} | DataId={gauge.SummonDataId}")
             .AppendLine($"ゲーム内カウントダウン利用可能: {countdown.Available} | 状態={countdown.Status}")
             .AppendLine($"ゲーム内カウントダウン作動中: {countdown.Active} | 残り={countdown.TimeRemaining:0.000}s | 開始者={countdown.Initiator}")
@@ -1826,7 +1826,7 @@ public sealed class BeastmasterDebugDataService
             AppendSequenceAction(builder, manager, "かりる", borrowActionId, 0);
             AppendSequenceAction(builder, manager, "魔獣技", beastSkillActionId, 0);
             AppendSequenceAction(builder, manager, "はなつ", releaseActionId, target?.GameObjectId ?? 0);
-            AppendSequenceAction(builder, manager, "百獣の皮 期待値", beastHideActionId, 0, adjust: false);
+            AppendSequenceAction(builder, manager, "ビーストスキン 期待値", beastHideActionId, 0, adjust: false);
             AppendSequenceAction(builder, manager, "シールドチャージ", shieldChargeActionId, target?.GameObjectId ?? 0, adjust: false);
         }
 

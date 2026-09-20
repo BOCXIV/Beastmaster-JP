@@ -268,7 +268,7 @@ public sealed class BeastmasterSequenceService
             }
             else if (MissedCountdownDeadline(countdown.TimeRemaining, sequence, countdownStep))
             {
-                Abort($"シーケンス中止：{pendingWhistle}号呼笛が確認できませんでした");
+                Abort($"シーケンス中止：{pendingWhistle}号呼び笛が確認できませんでした");
             }
             return true;
         }
@@ -303,8 +303,8 @@ public sealed class BeastmasterSequenceService
             && gauge.WhistleIndex == requiredWhistle)
         {
             countdownStep++;
-            Status = $"現在{requiredWhistle}号呼笛を確認、次のステップへ";
-            PrintChat($"現在{requiredWhistle}号呼笛を確認、重複リクエストをスキップ");
+            Status = $"現在{requiredWhistle}号呼び笛を確認、次のステップへ";
+            PrintChat($"現在{requiredWhistle}号呼び笛を確認、重複リクエストをスキップ");
             return true;
         }
 
@@ -394,8 +394,8 @@ public sealed class BeastmasterSequenceService
         if (baseActionId is WhistleOneActionId or WhistleTwoActionId or WhistleThreeActionId)
         {
             pendingWhistle = baseActionId == WhistleOneActionId ? (byte)1 : baseActionId == WhistleTwoActionId ? (byte)2 : (byte)3;
-            Status = $"カウントダウン：{pendingWhistle}号呼笛の確認待機中";
-            PrintChat($"カウントダウンアクションをリクエスト：「{step.Label}」、{pendingWhistle}号呼笛の確認待機中");
+            Status = $"カウントダウン：{pendingWhistle}号呼び笛の確認待機中";
+            PrintChat($"カウントダウンアクションをリクエスト：「{step.Label}」、{pendingWhistle}号呼び笛の確認待機中");
         }
         else if (baseActionId == BorrowActionId)
         {
@@ -471,7 +471,7 @@ public sealed class BeastmasterSequenceService
             }
             else
             {
-                combatStepFailure = $"獣笛 {pendingWhistle} 番の確認待機中（現在: {gauge.WhistleIndex} 番）";
+                combatStepFailure = $"{pendingWhistle}号呼び笛の確認待機中（現在: {gauge.WhistleIndex}号呼び笛）";
             }
             return true;
         }
@@ -488,8 +488,8 @@ public sealed class BeastmasterSequenceService
             combatStep++;
             stepDeadlineUtc = now.AddSeconds(8);
             ResetCombatStepFailure();
-            Status = $"現在の獣笛が {requiredWhistle} 番であることを確認済み、次の手順へ移行";
-            PrintChat($"現在の獣笛が {requiredWhistle} 番であることを確認したため重複リクエストをスキップ");
+            Status = $"現在の呼び笛が{requiredWhistle}号であることを確認済み、次の手順へ移行";
+            PrintChat($"現在の呼び笛が{requiredWhistle}号であることを確認したため重複リクエストをスキップ");
             return true;
         }
 
@@ -573,12 +573,12 @@ public sealed class BeastmasterSequenceService
         if (baseActionId == WhistleTwoActionId)
         {
             pendingWhistle = 2;
-            combatStepFailure = "2号獣笛の確認待機中";
+            combatStepFailure = "二号呼び笛の確認待機中";
         }
         else if (baseActionId == WhistleThreeActionId)
         {
             pendingWhistle = 3;
-            combatStepFailure = "3号獣笛の確認待機中";
+            combatStepFailure = "三号呼び笛の確認待機中";
         }
         else
         {

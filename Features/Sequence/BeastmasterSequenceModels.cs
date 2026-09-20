@@ -12,7 +12,7 @@ public sealed class BeastmasterSequenceDefinition
     ];
 
     public string Name { get; set; } = "水棲・虫PT開幕テンプレート";
-    public string Description { get; set; } = "水棲・虫PT開幕：三号呼笛→かりる→百獣の皮";
+    public string Description { get; set; } = "水棲・虫PT開幕：三号呼び笛→かりる→ビーストスキン";
     public List<BeastmasterSequenceStep> CountdownSteps { get; set; } = [];
     public List<BeastmasterSequenceStep> CombatSteps { get; set; } = [];
 
@@ -85,7 +85,7 @@ public sealed class BeastmasterSequenceDefinition
                 new(null, 44890, "はなつ"),
                 new(null, 44883, "アクスバイト"),
                 new(null, 44904, "おうえん"),
-                new(null, 44891, "最後の一撃"),
+                new(null, 44891, "さいごのいちげき"),
                 new(null, 44885, "シールドスプリッター"),
                 new(null, 44892, "二号呼び笛"),
                 new(null, 44890, "はなつ"),
@@ -97,10 +97,10 @@ public sealed class BeastmasterSequenceDefinition
         => new()
         {
             Name = "テストシーケンス",
-            Description = "カウントダウン、呼笛確認、T-0対象アクション、戦闘突入後の動作検証用。",
+            Description = "カウントダウン、呼び笛確認、T-0対象アクション、戦闘突入後の動作検証用。",
             CountdownSteps =
             [
-                new(-3, 44881, "一号呼笛"),
+                new(-3, 44881, "一号呼び笛"),
                 new(0, 44893, "シールドチャージ"),
             ],
             CombatSteps =

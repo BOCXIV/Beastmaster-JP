@@ -295,7 +295,7 @@ public sealed class BeastmasterRuleSetDefinition
                 },
                 new()
                 {
-                    Name = "最終バースト-1層",
+                    Name = "最終バースト-第一盤",
                     Enabled = true,
                     ConditionType = BeastmasterRuleConditionType.TargetDataId,
                     DataId = 19344,
@@ -576,7 +576,7 @@ public static class BeastmasterRuleActions
             44888 => "スピニングアクス",
             44889 => "ラファールアクス",
             44890 => "はなつ",
-            44891 => "最後の一撃",
+            44891 => "さいごのいちげき",
             44892 => "二号呼び笛",
             44893 => "シールドチャージ",
             44894 => "三号呼び笛",
@@ -585,7 +585,7 @@ public static class BeastmasterRuleActions
             44897 => "ヴァイルスキン",
             44898 => "クラウドスキム",
             44899 => "シードサワー",
-            44900 => "クェリングウェーブ",
+            44900 => "クエリングウェーブ",
             44901 => "スケイルスキン",
             44902 => "ソウルクラッシュ",
             44903 => "アッシュクレンズ",
@@ -624,12 +624,12 @@ public static class BeastmasterRuleActions
     public static string GetCrucibleItemTypeName(BeastmasterCrucibleItemType itemType)
         => itemType switch
         {
-            BeastmasterCrucibleItemType.Recovery => "回復類アイテム",
+            BeastmasterCrucibleItemType.Recovery => "回復アイテム",
             BeastmasterCrucibleItemType.Fang => "各種の牙",
-            BeastmasterCrucibleItemType.DodgeBook => "回避の書",
-            BeastmasterCrucibleItemType.ReflectBook => "反射の書",
+            BeastmasterCrucibleItemType.DodgeBook => "ブリンクの書",
+            BeastmasterCrucibleItemType.ReflectBook => "リフレクの書",
             BeastmasterCrucibleItemType.TimeSand => "時の砂",
-            BeastmasterCrucibleItemType.StrengthMedicine => "魔獣剛力薬",
+            BeastmasterCrucibleItemType.StrengthMedicine => "魔獣の剛力薬",
             BeastmasterCrucibleItemType.VampireFang => "吸血鬼の牙",
             _ => itemType.ToString(),
         };
@@ -637,14 +637,14 @@ public static class BeastmasterRuleActions
     public static string GetCrucibleItemName(uint itemId)
         => itemId switch
         {
-            76 => "1級魔獣回復薬",
-            77 => "2級魔獣回復薬",
-            78 => "3級魔獣回復薬",
-            79 => "4級魔獣回復薬",
-            80 => "1級魔獣薬粉",
-            81 => "2級魔獣薬粉",
-            82 => "3級魔獣薬粉",
-            104 => "魔獣剛力薬",
+            76 => "ビーストポーションG1",
+            77 => "ビーストポーションG2",
+            78 => "ビーストポーションG3",
+            79 => "ビーストポーションG4",
+            80 => "ビーストパウダーG1",
+            81 => "ビーストパウダーG2",
+            82 => "ビーストパウダーG3",
+            104 => "魔獣の剛力薬",
             128 => "火の牙",
             129 => "氷の牙",
             130 => "水の牙",
@@ -652,12 +652,12 @@ public static class BeastmasterRuleActions
             132 => "土の牙",
             133 => "風の牙",
             134 => "吸血鬼の牙",
-            135 => "魔獣吸血薬",
-            136 => "反射の書",
-            137 => "回避の書",
+            135 => "魔獣の吸血薬",
+            136 => "リフレクの書",
+            137 => "ブリンクの書",
             138 => "時の砂",
             139 => "星の砂",
-            140 => "魔獣回復薬セット",
+            140 => "ビーストポーションキット",
             _ => $"クルーシブルアイテム {itemId}",
         };
 

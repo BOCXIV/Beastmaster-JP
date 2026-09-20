@@ -21,7 +21,7 @@ public sealed class PluginUI
         ("auto-output", "自動戦闘(ACR)"),
         ("settings", "設定"),
         ("debug", "DEBUG"),
-        ("arena-navigation", "闘獣塔へ移動"),
+        ("arena-navigation", "闘獣練へ移動"),
     ];
 
     private static readonly (uint ActionId, string Name)[] SequenceActions =
@@ -31,7 +31,7 @@ public sealed class PluginUI
         (44885, "シールドスプリッター"),
         (44893, "シールドチャージ"),
         (44890, "はなつ"),
-        (44891, "最後の一撃"),
+        (44891, "さいごのいちげき"),
         (44881, "一号呼び笛"),
         (44892, "二号呼び笛"),
         (44894, "三号呼び笛"),
@@ -40,7 +40,7 @@ public sealed class PluginUI
         (44897, "ヴァイルスキン"),
         (44898, "クラウドスキム"),
         (44899, "シードサワー"),
-        (44900, "クェリングウェーブ"),
+        (44900, "クエリングウェーブ"),
         (44901, "スケイルスキン"),
         (44902, "ソウルクラッシュ"),
         (44903, "アッシュクレンズ"),
@@ -643,7 +643,7 @@ public sealed class PluginUI
                     4,
                     new Vector3(24.238f, -6.003f, 65.809f),
                     "黒衣森：中央森林",
-                    "闘獣塔"));
+                    "闘獣練"));
             }
         }
 
@@ -665,8 +665,8 @@ public sealed class PluginUI
 
     private void DrawArenaNavigation()
     {
-        ImGui.Text("闘獣塔へ移動");
-        ImGui.TextDisabled("黒衣森：中央森林にある闘獣塔の入口へ自動ナビゲーションします。");
+        ImGui.Text("闘獣練へ移動");
+        ImGui.TextDisabled("黒衣森：中央森林にある闘獣練の入口へ自動ナビゲーションします。");
         ImGui.Separator();
         ImGui.Text("種別：現在地");
         ImGui.TextDisabled("TerritoryType: 148");
@@ -733,32 +733,32 @@ public sealed class PluginUI
         ImGui.Text("昆虫PT · 闘獣練 第一・二盤 高速周回");
         ImGui.TextColored(new Vector4(0.95f, 0.82f, 0.25f, 1f), "推奨構成：マンティス ＋ ヴェスパ ＋ クーシー");
         ImGui.TextWrapped("最もシンプルかつ手軽な周回構成。マンティスの被ダメージ上昇バフを確実に当てるのがポイントです。");
-        DrawCombinationStep("一号呼笛でマンティスを召喚、物理被ダメージ上昇付与後に", true, "を使用。");
-        DrawCombinationStep("二号呼笛でヴェスパを召喚、", false, "で自爆。");
-        DrawCombinationStep("三号呼笛でクーシーを召喚、", false, "を使用して通常攻撃。");
+        DrawCombinationStep("一号呼び笛でマンティスを召喚、物理被ダメージ上昇付与後に", true, "を使用。");
+        DrawCombinationStep("二号呼び笛でヴェスパを召喚、", false, "で自爆。");
+        DrawCombinationStep("三号呼び笛でクーシーを召喚、", false, "を使用して通常攻撃。");
 
         ImGui.Separator();
         ImGui.Text("昆虫PT · 特一盤 高速周回");
         ImGui.TextColored(new Vector4(0.95f, 0.82f, 0.25f, 1f), "推奨構成：マンティス ＋ コリブリ ＋ ヴェスパ");
-        DrawCombinationStep("一号呼笛でマンティスを召喚、物理被ダメージ上昇（はなつ）付与後に", true, "を使用。");
-        DrawCombinationStep("二号呼笛でコリブリを召喚、「はなつ」で単体攻撃後に", true, "を使用。");
-        DrawCombinationStep("三号呼笛でヴェスパを召喚、BOSS の HP が 25% 未満になったら", false, "を使用。");
+        DrawCombinationStep("一号呼び笛でマンティスを召喚、物理被ダメージ上昇（はなつ）付与後に", true, "を使用。");
+        DrawCombinationStep("二号呼び笛でコリブリを召喚、「はなつ」で単体攻撃後に", true, "を使用。");
+        DrawCombinationStep("三号呼び笛でヴェスパを召喚、BOSS の HP が 25% 未満になったら", false, "を使用。");
 
         ImGui.Separator();
         ImGui.Text("水属性PT · 参考構成");
         ImGui.TextColored(new Vector4(0.35f, 0.75f, 1f, 1f), "サラマンダー ＋ メガロクラブ ＋ クラブ");
         ImGui.TextWrapped("サラマンダーとメガロクラブで魔法被ダメージ上昇および水属性被ダメージ上昇を付与し、3番手のクラブで大ダメージを狙う構成です。");
-        ImGui.TextDisabled("戦闘開始前に三号呼笛に切り替えて「かりる」を準備。水棲波は被ダメージ上昇中に合わせ、敵バフ解除にも活用できます。");
-        DrawCombinationStep("一号呼笛でサラマンダーを召喚、魔法被ダメージ上昇付与後に", true, "を使用。");
-        DrawCombinationStep("二号呼笛でメガロクラブを召喚、水属性被ダメージ上昇を付与。連携完了後に", true, "を使用。");
-        DrawCombinationStep("三号呼笛でクラブを召喚、", false, "を使用して通常攻撃。");
+        ImGui.TextDisabled("戦闘開始前に三号呼び笛に切り替えて「かりる」を準備。水棲波は被ダメージ上昇中に合わせ、敵バフ解除にも活用できます。");
+        DrawCombinationStep("一号呼び笛でサラマンダーを召喚、魔法被ダメージ上昇付与後に", true, "を使用。");
+        DrawCombinationStep("二号呼び笛でメガロクラブを召喚、水属性被ダメージ上昇を付与。連携完了後に", true, "を使用。");
+        DrawCombinationStep("三号呼び笛でクラブを召喚、", false, "を使用して通常攻撃。");
 
         ImGui.Text("水属性PT · 第一・二盤 高速周回アレンジ");
         ImGui.TextColored(new Vector4(0.35f, 0.75f, 1f, 1f), "サラマンダー ＋ メガロクラブ ＋ アプカル");
-        ImGui.TextDisabled("戦闘開始前に三号呼笛に切り替えてアプカルの「かりる」を準備。メガロクラブはフル連携を待たずに即移行可能です。");
-        DrawCombinationStep("一号呼笛でサラマンダーを召喚、魔法被ダメージ上昇付与後に", true, "を使用。");
-        DrawCombinationStep("二号呼笛でメガロクラブを召喚、水属性被ダメージ上昇を付与し、即座に", true, "を使用。");
-        DrawCombinationStep("三号呼笛でアプカルを召喚、", false, "を使用して通常攻撃。");
+        ImGui.TextDisabled("戦闘開始前に三号呼び笛に切り替えてアプカルの「かりる」を準備。メガロクラブはフル連携を待たずに即移行可能です。");
+        DrawCombinationStep("一号呼び笛でサラマンダーを召喚、魔法被ダメージ上昇付与後に", true, "を使用。");
+        DrawCombinationStep("二号呼び笛でメガロクラブを召喚、水属性被ダメージ上昇を付与し、即座に", true, "を使用。");
+        DrawCombinationStep("三号呼び笛でアプカルを召喚、", false, "を使用して通常攻撃。");
 
         ImGui.Separator();
         ImGui.Text("情報提供・参考元");
@@ -788,7 +788,7 @@ public sealed class PluginUI
             ImGui.SameLine(0f, 3f);
             ImGui.TextUnformatted("、さらに");
             ImGui.SameLine(0f, 3f);
-            DrawCombinationAction("[最後の一撃]", 44891, new Vector4(1f, 0.4f, 0.3f, 1f));
+            DrawCombinationAction("[さいごのいちげき]", 44891, new Vector4(1f, 0.4f, 0.3f, 1f));
             ImGui.SameLine(0f, 3f);
             ImGui.TextUnformatted(suffix);
         }
@@ -812,7 +812,7 @@ public sealed class PluginUI
         var description = actionId switch
         {
             44890u => "ペットに対象への固有アクションを実行させます（呼び出している使役獣に応じて技が変化します）。",
-            44891u => "ペットに対象への最後の一撃を実行させます。",
+            44891u => "ペットに対象へのさいごのいちげきを実行させます。",
             _ => string.Empty,
         };
         if (!string.IsNullOrWhiteSpace(description))
@@ -1272,7 +1272,7 @@ public sealed class PluginUI
         {
             var itemType = (int)rule.CrucibleItemType;
             ImGui.SetNextItemWidth(190f);
-            if (ImGui.Combo("クルーシブルアイテム", ref itemType, "回復類アイテム\0各種の牙\0回避の書\0反射の書\0時の砂\0魔獣剛力薬\0吸血鬼の牙\0"))
+            if (ImGui.Combo("クルーシブルアイテム", ref itemType, "回復アイテム\0各種の牙\0ブリンクの書\0リフレクの書\0時の砂\0魔獣の剛力薬\0吸血鬼の牙\0"))
             {
                 rule.CrucibleItemType = (BeastmasterCrucibleItemType)itemType;
                 configuration.Save();
@@ -2745,7 +2745,7 @@ public sealed class PluginUI
             configuration.OverlayThreeColumnMode);
         ImGui.Spacing();
         DrawAdvancedActionToggles();
-        ImGui.TextDisabled("優先順位：スキルシーケンス → 魔獣回復薬 → ルールモード → 連携技2段目 → はなつ → 最後の一撃 → きあい → おうえん → 万象流転 → 連携技1段目 → 安全シールド → とらえる → 基本コンボ");
+        ImGui.TextDisabled("優先順位：スキルシーケンス → 回復アイテム → ルールモード → 連携技2段目 → はなつ → さいごのいちげき → きあい → おうえん → 万象流転 → 連携技1段目 → 安全シールド → とらえる → 基本コンボ");
 
         ImGui.Spacing();
         DrawSequenceSettings();
@@ -2820,8 +2820,8 @@ public sealed class PluginUI
                 DrawOverlayAdvancedToggle("万象・物理", configuration.PhysicalThirdFormEnabled, () => ToggleThirdForm(true), "万象流転（物理）", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("万象・魔法", configuration.MagicalThirdFormEnabled, () => ToggleThirdForm(false), "万象流転（魔法）", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("おうえん", configuration.AutoCheerEnabled, () => ToggleBoolean(nameof(configuration.AutoCheerEnabled)), "おうえん・リキャスト毎", ref threeColumn, columnCount: 3);
-                DrawOverlayAdvancedToggle("自動呼笛", configuration.AutoWhistleEnabled, () => ToggleBoolean(nameof(configuration.AutoWhistleEnabled)), "自動呼笛", ref threeColumn, columnCount: 3);
-                DrawOverlayAdvancedToggle("最後の一撃", configuration.AutoFinalStrikeEnabled, () => autoCaptureService.SetFinalStrikeEnabled(!configuration.AutoFinalStrikeEnabled), "最後の一撃", ref threeColumn, columnCount: 3);
+                DrawOverlayAdvancedToggle("自動呼び笛", configuration.AutoWhistleEnabled, () => ToggleBoolean(nameof(configuration.AutoWhistleEnabled)), "自動呼び笛", ref threeColumn, columnCount: 3);
+                DrawOverlayAdvancedToggle("さいごのいちげき", configuration.AutoFinalStrikeEnabled, () => autoCaptureService.SetFinalStrikeEnabled(!configuration.AutoFinalStrikeEnabled), "さいごのいちげき", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("はなつ", configuration.AutoReleaseEnabled, () => ToggleBoolean(nameof(configuration.AutoReleaseEnabled)), "はなつ・リキャスト毎", ref threeColumn, columnCount: 3);
                 DrawOverlayAdvancedToggle("継続ひきつけ", IsArenaRuleEnabled(46751, 2413), () => ToggleArenaRule(46751, 2413), "継続ひきつけ", ref threeColumn, columnCount: 3, yellowWhenEnabled: true);
                 DrawOverlayAdvancedToggle("継続ちょうはつ", IsArenaRuleEnabled(46750, 5586), () => ToggleArenaRule(46750, 5586), "継続ちょうはつ", ref threeColumn, columnCount: 3, yellowWhenEnabled: true);
@@ -2870,12 +2870,12 @@ public sealed class PluginUI
                     configuration.AutoCheerEnabled = !configuration.AutoCheerEnabled;
                     configuration.Save();
                 }, "おうえん・リキャスト毎：獣霊が0の時は通常判定、獣霊が0より大きい時は万象流転（物理または魔法）有効時のみ判定。スキルシステム許可時に自動でおうえん（44904）を使用します。", ref column);
-            DrawOverlayAdvancedToggle("自動呼笛", configuration.AutoWhistleEnabled,
+            DrawOverlayAdvancedToggle("自動呼び笛", configuration.AutoWhistleEnabled,
                 () =>
                 {
                     configuration.AutoWhistleEnabled = !configuration.AutoWhistleEnabled;
                     configuration.Save();
-                }, "使役獣がいない時、呼笛 1→2→3 の順で使用可能なものを自動召喚します。リクエスト後1秒待機して召喚を確認し、連続使用を防止します。", ref column);
+                }, "使役獣がいない時、呼び笛 1→2→3 の順で使用可能なものを自動召喚します。リクエスト後1秒待機して召喚を確認し、連続使用を防止します。", ref column);
             DrawOverlayAdvancedToggle("安全シールド", configuration.AutoSafeShieldEnabled, () => ToggleBoolean(nameof(configuration.AutoSafeShieldEnabled)), "安全シールド：ターゲットとの距離が 3 yalms 以内で、シールドチャージが使用可能な場合に自動使用します。", ref column, yellowWhenEnabled: true);
             DrawOverlayAdvancedToggle("はなつ", configuration.AutoReleaseEnabled,
                 () =>
@@ -2883,18 +2883,18 @@ public sealed class PluginUI
                     configuration.AutoReleaseEnabled = !configuration.AutoReleaseEnabled;
                     configuration.Save();
                 }, "はなつ・リキャスト毎：スキルシステムが許可し、かつ召喚獣が射程内の時に自動ではなつを使用します。", ref column);
-            DrawOverlayAdvancedToggle("最後の一撃", configuration.AutoFinalStrikeEnabled,
+            DrawOverlayAdvancedToggle("さいごのいちげき", configuration.AutoFinalStrikeEnabled,
                 () => autoCaptureService.SetFinalStrikeEnabled(!configuration.AutoFinalStrikeEnabled),
-                "最後の一撃のマスター切り替え。呼笛ごとの個別設定やHP閾値は自動戦闘設定ページで行います。「はなつ待機」有効時は、魔獣がはなつを使用するまで待機します。",
+                "さいごのいちげきのマスター切り替え。呼び笛ごとの個別設定やHP閾値は自動戦闘設定ページで行います。「はなつ待機」有効時は、魔獣がはなつを使用するまで待機します。",
                 ref column);
             DrawOverlayAdvancedToggle("継続ひきつけ", IsArenaRuleEnabled(46751, 2413),
                 () => ToggleArenaRule(46751, 2413),
-                "ルールモード内の継続ひきつけルールを切り替えます。闘獣塔エリア（1339〜1343）でのみ有効です。",
+                "ルールモード内の継続ひきつけルールを切り替えます。闘獣練エリア（1339〜1343）でのみ有効です。",
                 ref column,
                 yellowWhenEnabled: true);
             DrawOverlayAdvancedToggle("継続ちょうはつ", IsArenaRuleEnabled(46750, 5586),
                 () => ToggleArenaRule(46750, 5586),
-                "ルールモード内の継続ちょうはつルールを切り替えます。闘獣塔エリア（1339〜1343）でのみ有効です。",
+                "ルールモード内の継続ちょうはつルールを切り替えます。闘獣練エリア（1339〜1343）でのみ有効です。",
                 ref column,
                 yellowWhenEnabled: true);
             return;
@@ -2953,43 +2953,43 @@ public sealed class PluginUI
         }
 
         var autoWhistleEnabled = configuration.AutoWhistleEnabled;
-        if (ImGui.Checkbox("自動呼笛", ref autoWhistleEnabled))
+        if (ImGui.Checkbox("自動呼び笛", ref autoWhistleEnabled))
         {
             configuration.AutoWhistleEnabled = autoWhistleEnabled;
             configuration.Save();
         }
         if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip("使役獣がいない時、呼笛 1→2→3 の順で使用可能なものを自動召喚します（召喚後1秒待機）。");
+            ImGui.SetTooltip("使役獣がいない時、呼び笛 1→2→3 の順で使用可能なものを自動召喚します（召喚後1秒待機）。");
         }
 
-        DrawCompactSettingCheckbox("きあい", "きあい・リキャスト毎：御獣の心が0の時、または御獣の心が3かつ技力が0の時に判定。アクション実行可能な場合、GCD待機中に自動で使用します（44905）。", nameof(configuration.AutoDrumEnabled), configuration.AutoDrumEnabled);
-        DrawCompactSettingCheckbox("おうえん", "おうえん・リキャスト毎：獣霊の心が0の時、または獣霊の心が3かつ獣力が0の時に判定。アクション実行可能な場合、GCD待機中に自動で使用します（44904）。", nameof(configuration.AutoCheerEnabled), configuration.AutoCheerEnabled);
+        DrawCompactSettingCheckbox("きあい", "きあい・リキャスト毎：ビーストハートが0の時、またはビーストハートが3かつ技力が0の時に判定。アクション実行可能な場合、GCD待機中に自動で使用します（44905）。", nameof(configuration.AutoDrumEnabled), configuration.AutoDrumEnabled);
+        DrawCompactSettingCheckbox("おうえん", "おうえん・リキャスト毎：ビーストソウルが0の時、またはビーストソウルが3かつ魔獣技力が0の時に判定。アクション実行可能な場合、GCD待機中に自動で使用します（44904）。", nameof(configuration.AutoCheerEnabled), configuration.AutoCheerEnabled);
         DrawCompactSettingCheckbox("かりる", "かりる・リキャスト毎：現在召喚中の魔獣からアビリティをかりる（44895）。実行後、魔獣技がかりたアクションに変化します。デフォルト無効。", nameof(configuration.AutoBorrowEnabled), configuration.AutoBorrowEnabled);
         DrawCompactSettingCheckbox("魔獣技", "魔獣技・リキャスト毎：かりた魔獣のアビリティ（44886 変化後）を実行します。デフォルト無効。", nameof(configuration.AutoBeastSkillEnabled), configuration.AutoBeastSkillEnabled);
 
         var autoRecoveryItemEnabled = configuration.AutoRecoveryItemEnabled;
-        if (ImGui.Checkbox("低HP時に自動で魔獣回復薬を使用", ref autoRecoveryItemEnabled))
+        if (ImGui.Checkbox("低HP時に自動で回復アイテムを使用", ref autoRecoveryItemEnabled))
         {
             configuration.AutoRecoveryItemEnabled = autoRecoveryItemEnabled;
             configuration.Save();
         }
         if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip("闘獣練での戦闘中のみ有効。自身のHPが閾値未満の際、魔獣回復薬セット → 4/3/2/1級魔獣回復薬 → 3/2/1級魔獣薬粉 → 魔獣吸血薬 → 吸血鬼の牙の優先度で使用します。吸血鬼の牙は敵対ターゲットが必要で、使用成功後2秒の間隔を共有します（デフォルトOFF）。");
+            ImGui.SetTooltip("闘獣練での戦闘中のみ有効。自身のHPが閾値未満の際、ビーストポーションキット → ビーストポーションG4/G3/G2/G1 → ビーストパウダーG3/G2/G1 → 魔獣の吸血薬 → 吸血鬼の牙の優先度で使用します。吸血鬼の牙は敵対ターゲットが必要で、使用成功後2秒の間隔を共有します（デフォルトOFF）。");
         }
         if (configuration.AutoRecoveryItemEnabled)
         {
             ImGui.SetNextItemWidth(70f);
             var recoveryThreshold = configuration.AutoRecoveryItemHpThreshold;
-            if (ImGui.InputFloat("回復薬のHP閾値", ref recoveryThreshold, 0f, 0f, "%.0f%%"))
+            if (ImGui.InputFloat("回復アイテムのHP閾値", ref recoveryThreshold, 0f, 0f, "%.0f%%"))
             {
                 configuration.AutoRecoveryItemHpThreshold = Math.Clamp(recoveryThreshold, 1f, 100f);
                 configuration.Save();
             }
             DrawCompactSettingCheckbox(
-                "回復薬エコー通知",
-                "低HP時の自動回復薬使用の成功または失敗時にエコーチャットで通知します。成功判定は要求後3秒以内の自身HP上昇に基づきます。デフォルトは無効です。",
+                "回復アイテムエコー通知",
+                "低HP時の自動回復アイテム使用の成功または失敗時にエコーチャットで通知します。成功判定は要求後3秒以内の自身HP上昇に基づきます。デフォルトは無効です。",
                 nameof(configuration.AutoRecoveryItemDiagnosticsEnabled),
                 configuration.AutoRecoveryItemDiagnosticsEnabled);
         }
@@ -3198,7 +3198,7 @@ public sealed class PluginUI
         var anyFinalStrike = configuration.AutoFinalStrikeWhistleOneEnabled
             || configuration.AutoFinalStrikeWhistleTwoEnabled
             || configuration.AutoFinalStrikeWhistleThreeEnabled;
-        if (ImGui.Checkbox("最後の一撃", ref anyFinalStrike))
+        if (ImGui.Checkbox("さいごのいちげき", ref anyFinalStrike))
         {
             configuration.AutoFinalStrikeWhistleOneEnabled = anyFinalStrike;
             configuration.AutoFinalStrikeWhistleTwoEnabled = anyFinalStrike;
@@ -3207,42 +3207,42 @@ public sealed class PluginUI
         }
         if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip("1/2/3号呼笛の「最後の一撃」を一括で切り替えます。詳細な閾値設定は「自動戦闘(ACR)」タブで行えます。");
+            ImGui.SetTooltip("1/2/3号呼び笛の「さいごのいちげき」を一括で切り替えます。詳細な閾値設定は「自動戦闘(ACR)」タブで行えます。");
         }
     }
 
     private void DrawFinalStrikeSettings()
     {
         DrawFinalStrikeWhistleToggle(
-            "一号呼笛：最後の一撃",
+            "一号呼び笛：さいごのいちげき",
             "AutoFinalStrikeWhistleOneEnabled",
             "AutoFinalStrikeWhistleOneHpThreshold",
             configuration.AutoFinalStrikeWhistleOneEnabled,
             configuration.AutoFinalStrikeWhistleOneHpThreshold);
 
         DrawFinalStrikeWhistleToggle(
-            "二号呼笛：最後の一撃",
+            "二号呼び笛：さいごのいちげき",
             "AutoFinalStrikeWhistleTwoEnabled",
             "AutoFinalStrikeWhistleTwoHpThreshold",
             configuration.AutoFinalStrikeWhistleTwoEnabled,
             configuration.AutoFinalStrikeWhistleTwoHpThreshold);
 
         DrawFinalStrikeWhistleToggle(
-            "三号呼笛：最後の一撃",
+            "三号呼び笛：さいごのいちげき",
             "AutoFinalStrikeWhistleThreeEnabled",
             "AutoFinalStrikeWhistleThreeHpThreshold",
             configuration.AutoFinalStrikeWhistleThreeEnabled,
             configuration.AutoFinalStrikeWhistleThreeHpThreshold);
 
         var waitForRelease = configuration.AutoFinalStrikeWaitForRelease;
-        if (ImGui.Checkbox("最後の一撃：はなつ待機", ref waitForRelease))
+        if (ImGui.Checkbox("さいごのいちげき：はなつ待機", ref waitForRelease))
         {
             configuration.AutoFinalStrikeWaitForRelease = waitForRelease;
             configuration.Save();
         }
         if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip("現在の魔獣が「はなつ」を使用済み、かつ「はなつ」がリキャスト待ちの場合にのみ「最後の一撃」を実行します。");
+            ImGui.SetTooltip("現在の魔獣が「はなつ」を使用済み、かつ「はなつ」がリキャスト待ちの場合にのみ「さいごのいちげき」を実行します。");
         }
     }
 
@@ -3265,7 +3265,7 @@ public sealed class PluginUI
         }
         if (ImGui.IsItemHovered())
         {
-            ImGui.SetTooltip($"{label}：魔獣HPがこの閾値以下のときに「最後の一撃」を実行します（範囲: 1%〜100%）。");
+            ImGui.SetTooltip($"{label}：魔獣HPがこの閾値以下のときに「さいごのいちげき」を実行します（範囲: 1%〜100%）。");
         }
     }
 
@@ -3403,7 +3403,7 @@ public sealed class PluginUI
     private void DrawBeastmasterGauge()
     {
         ImGui.Separator();
-        ImGui.Text("ジョブHUD（量譜）");
+        ImGui.Text("ジョブHUD（ジョブゲージ）");
         ImGui.TextDisabled("魔獣使いのジョブHUD状態を読み取り表示します（JobGaugeManager.CurrentGauge）。");
 
         var snapshot = gaugeSnapshot;
@@ -3429,16 +3429,16 @@ public sealed class PluginUI
             ImGui.TableSetupColumn("現在値", ImGuiTableColumnFlags.WidthStretch);
             DrawGaugeRow("技力", $"{snapshot.Tp} / {BeastmasterGaugeSnapshot.MaximumGauge}", "基本ウェポンスキルリソース（TP）");
             DrawGaugeRow("魔獣技力", $"{snapshot.BeastPower} / {BeastmasterGaugeSnapshot.MaximumGauge}", "獣心技リソース");
-            DrawGaugeRow("現在の呼笛", snapshot.WhistleIndex switch
+            DrawGaugeRow("現在の呼び笛", snapshot.WhistleIndex switch
             {
-                1 => "一号呼笛",
-                2 => "二号呼笛",
-                3 => "三号呼笛",
+                1 => "一号呼び笛",
+                2 => "二号呼び笛",
+                3 => "三号呼び笛",
                 _ => "未召喚",
-            }, "発動中の呼笛");
+            }, "発動中の呼び笛");
             DrawGaugeRow("ペットHP", snapshot.SummonMaxHp > 0
                 ? $"{snapshot.SummonHpPercent:0.#}%（{snapshot.SummonCurrentHp}/{snapshot.SummonMaxHp}）"
-                : "取得不可", "自動最後の一撃の判定用");
+                : "取得不可", "自動さいごのいちげきの判定用");
             DrawGaugeRow("ビーストハート", $"{snapshot.BeastHeartStacks} スタック", "連携シンボル");
             DrawGaugeRow("ビーストソウル", $"{snapshot.BeastSoulStacks} スタック", "連携シンボル");
             DrawGaugeRow("連携II属性", GetBlackWhiteStatus(snapshot), "活命撃 4599 / 滅命撃 4600");

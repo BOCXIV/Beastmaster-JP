@@ -122,9 +122,9 @@ public sealed unsafe class BeastmasterCrucibleItemService
                 $"\n  {recoveryItemId}:スロット={displaySlot}/インベントリ={inventorySlot}/ステータス={useStatus}/自身に使用可能={(canUse ? "可" : "不可")}");
             if (displaySlot < 0 || useStatus != 0 || !canUse)
             {
-                LastFailureReason = displaySlot < 0 ? $"魔獣回復薬 {recoveryItemId} のクルーシブルスロットが見つかりません"
-                    : useStatus != 0 ? $"魔獣回復薬 {recoveryItemId} のゲーム内ステータスが利用不可（コード {useStatus}）"
-                    : $"魔獣回復薬 {recoveryItemId} は現在自身に使用できません";
+                LastFailureReason = displaySlot < 0 ? $"回復アイテム {recoveryItemId} のクルーシブルスロットが見つかりません"
+                    : useStatus != 0 ? $"回復アイテム {recoveryItemId} のゲーム内ステータスが利用不可（コード {useStatus}）"
+                    : $"回復アイテム {recoveryItemId} は現在自身に使用できません";
                 continue;
             }
 
@@ -137,7 +137,7 @@ public sealed unsafe class BeastmasterCrucibleItemService
 
         LastDiagnostic = $"選択フェーズ（全不可）：{diagnostic}";
 
-        var recoveryFailure = "魔獣回復薬セット 140、魔獣回復薬 79/78/77/76、魔獣薬粉 82/81/80、魔獣吸血薬 135 が存在しないか、現在使用できません";
+        var recoveryFailure = "ビーストポーションキット 140、ビーストポーションG4〜G1（79〜76）、ビーストパウダーG3〜G1（82〜80）、魔獣の吸血薬 135 が存在しないか、現在使用できません";
         if (target != null && !target.IsDead && target.CurrentHp > 0)
         {
             if (TryUseCrucibleItemOnTarget(134, target, now, ruleSource))
@@ -783,7 +783,7 @@ public sealed unsafe class BeastmasterCrucibleItemService
         if (!DalamudApi.SigScanner.TryScanText(UseStatusSignature, out var statusAddress)
             || !DalamudApi.SigScanner.TryScanText(RefreshMappingSignature, out var refreshAddress))
         {
-            DalamudApi.Log.Warning("魔獣回復薬のネイティブシグネチャが見つからないため、回復薬の自動使用を停止しました。");
+            DalamudApi.Log.Warning("クルーシブル回復アイテムのネイティブシグネチャが見つからないため、回復アイテムの自動使用を停止しました。");
             return false;
         }
 

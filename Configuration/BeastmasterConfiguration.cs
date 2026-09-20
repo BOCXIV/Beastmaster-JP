@@ -21,7 +21,7 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
     [NonSerialized]
     private Task pendingSaveTask = Task.CompletedTask;
 
-    public int Version { get; set; } = 45;
+    public int Version { get; set; } = 46;
     public string SelectedStageKey { get; set; } = string.Empty;
     public string SelectedMainSection { get; set; } = "quests";
     public bool HideCompletedQuests { get; set; }
@@ -337,11 +337,11 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
         if (Version < 30)
         {
             var defaultRuleSet = RuleSets.FirstOrDefault(ruleSet => ruleSet.Name == "デフォルトルールセット");
-            if (defaultRuleSet != null && !defaultRuleSet.Rules.Any(rule => rule.Name == "最終バースト-1層"))
+            if (defaultRuleSet != null && !defaultRuleSet.Rules.Any(rule => rule.Name is "最終バースト-第一盤" or "最終バースト-1層"))
             {
                 defaultRuleSet.Rules.Add(new BeastmasterRuleDefinition
                 {
-                    Name = "最終バースト-1層",
+                    Name = "最終バースト-第一盤",
                     Enabled = true,
                     ConditionType = BeastmasterRuleConditionType.TargetDataId,
                     DataId = 19344,
@@ -496,6 +496,23 @@ public sealed class BeastmasterConfiguration : IPluginConfiguration
         {
             AutoRecoveryItemDiagnosticsEnabled = false;
             Version = 45;
+            Save();
+        }
+
+        if (Version < 46)
+        {
+            foreach (var ruleSet in RuleSets)
+            {
+                foreach (var rule in ruleSet.Rules)
+                {
+                    if (rule.Name == "最終バースト-1層")
+                    {
+                        rule.Name = "最終バースト-第一盤";
+                    }
+                }
+            }
+
+            Version = 46;
             Save();
         }
 

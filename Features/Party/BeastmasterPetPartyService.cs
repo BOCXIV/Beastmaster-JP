@@ -48,7 +48,7 @@ public sealed unsafe class BeastmasterPetPartyService : IDisposable
     {
         if (!Snapshot.Available || Snapshot.MemberCount != 0)
         {
-            applyError = "単歩追加テストは第1盤のパーティが空である必要があります。";
+            applyError = "ステップ追加テストは第一盤のパーティが空である必要があります。";
             return false;
         }
 
@@ -59,7 +59,7 @@ public sealed unsafe class BeastmasterPetPartyService : IDisposable
         }
 
         SendAgentEvent(500, 0, 7, (ulong)(catalogNumber - 1));
-        applyError = $"図鑑 {catalogNumber:00} の単歩追加リクエストを送信しました。編成スナップショットの確認待ち。";
+        applyError = $"図鑑 {catalogNumber:00} のステップ追加リクエストを送信しました。編成スナップショットの確認待ち。";
         return true;
     }
 
@@ -73,7 +73,7 @@ public sealed unsafe class BeastmasterPetPartyService : IDisposable
             return false;
         }
 
-        applyingPreset = new BeastmasterPartyPreset { Name = "単歩クリア検証" };
+        applyingPreset = new BeastmasterPartyPreset { Name = "ステップクリア検証" };
         applyingMemberIndex = 0;
         clearOnly = true;
         applyError = string.Empty;

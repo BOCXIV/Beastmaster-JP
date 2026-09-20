@@ -23,5 +23,6 @@ public static class BeastmasterFinalStrikeLock
     public static string GetBlockReason(uint actionId, DateTime now)
         => actionId == 44891
             ? $"はなつ待機中、残り {RemainingSeconds(actionId, now):0.#} 秒"
-            : $"最後の一撃待機中、残り {RemainingSeconds(actionId, now):0.#} 秒";
+            : $"さいごのいちげき待機中、残り {RemainingSeconds(actionId, now):0.#} 秒";
 }
+

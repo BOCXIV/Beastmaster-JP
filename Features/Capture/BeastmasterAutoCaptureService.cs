@@ -526,7 +526,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
         var gauge = BeastmasterGaugeSnapshot.Read();
         ResourceStatus = gauge.Available
-            ? $"技力 {gauge.Tp}/250、獣力 {gauge.BeastPower}/250"
+            ? $"技力 {gauge.Tp}/250、魔獣技力 {gauge.BeastPower}/250"
             : gauge.Status;
         AdvancedActionStatus = GetAdvancedActionStatus(gauge);
 
@@ -610,13 +610,13 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
                 ReportRecoveryItemFailure(
                     player,
                     playerHpPercent,
-                    "回復薬",
+                    "回復アイテム",
                     $"{crucibleItemService.LastFailureReason}{crucibleItemService.LastDiagnostic}",
                     now);
             }
             else
             {
-                StatusText = "自動で回復薬を使用中...";
+                StatusText = "自動で回復アイテムを使用中...";
                 NextActionName = GetRecoveryItemName(recoveryItemId);
                 NextActionReason = $"自身のHP {playerHpPercent:0.#}% が閾値 {configuration.AutoRecoveryItemHpThreshold:0.#}% 未満";
                 nextActionUtc = now.AddMilliseconds(700);
@@ -645,7 +645,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             return;
         }
 
-        // 呼笛ローテーションのエントリを一時的に無効化し、後で復元できるように実装を保持。
+        // 呼び笛ローテーションのエントリを一時的に無効化し、後で復元できるように実装を保持。
         // if ((configuration.WhistleRotationEnabled || whistleRotationWaitingForCooldown || whistleRotationStage >= 0)
         //     && TryRunWhistleRotation(actionManager, target, now))
         // {
@@ -764,7 +764,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
                         $"{NextActionName}使用不可: ステータスコード {cooperationStatus}（待機ウィンドウ残り {(pendingCooperationUntilUtc - now).TotalSeconds:0.#} 秒）",
                         $"status-{cooperationStatus}");
                     ReportAutoOutputDiagnostic(NextActionName,
-                        $"スキルステータスコード {cooperationStatus}；技力 {gauge.Tp}/250、獣力 {gauge.BeastPower}/250",
+                        $"スキルステータスコード {cooperationStatus}；技力 {gauge.Tp}/250、魔獣技力 {gauge.BeastPower}/250",
                         $"status-{cooperationStatus}");
                 }
                 if (cooperationUsed)
@@ -1020,12 +1020,12 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
     private static string GetRecoveryItemName(ushort itemId)
         => itemId switch
         {
-            140 => "魔獣回復薬セット",
+            140 => "ビーストポーションキット",
             139 => "星の砂",
             134 => "吸血鬼の牙",
-            135 => "魔獣吸血薬",
-            80 or 81 or 82 => $"{itemId - 79}級魔獣薬粉",
-            76 or 77 or 78 or 79 => $"{itemId - 75}級魔獣回復薬",
+            135 => "魔獣の吸血薬",
+            80 or 81 or 82 => $"ビーストパウダーG{itemId - 79}",
+            76 or 77 or 78 or 79 => $"ビーストポーションG{itemId - 75}",
             _ => $"クルーシブル回復アイテム {itemId}",
         };
 
@@ -1094,18 +1094,18 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             if (pendingCooperationActionId != 0)
             {
                 var status = actionManager->GetActionStatus(ActionType.Action, pendingCooperationActionId, target.GameObjectId);
-                Add("御獣連携", status == 0, status == 0 ? "" : $"コード {status}");
+                Add("獣心技連携", status == 0, status == 0 ? "" : $"コード {status}");
             }
             else if (TryGetCooperationAction(gauge, configuration.BeastHeartCooperationEnabled, out var cooperationId, out _, out _))
             {
                 var status = actionManager->GetActionStatus(ActionType.Action, cooperationId, target.GameObjectId);
-                Add("御獣連携", status == 0, status == 0 ? "" : gauge.Tp < BeastmasterGaugeSnapshot.ComboGaugeRequirement || gauge.BeastPower < BeastmasterGaugeSnapshot.ComboGaugeRequirement
-                    ? $"リソース 技力 {gauge.Tp}/250 獣力 {gauge.BeastPower}/250"
+                Add("獣心技連携", status == 0, status == 0 ? "" : gauge.Tp < BeastmasterGaugeSnapshot.ComboGaugeRequirement || gauge.BeastPower < BeastmasterGaugeSnapshot.ComboGaugeRequirement
+                    ? $"リソース 技力 {gauge.Tp}/250 魔獣技力 {gauge.BeastPower}/250"
                     : $"コード {status}");
             }
             else
             {
-                Add("御獣連携", false, $"リソース 技力 {gauge.Tp}/250 獣力 {gauge.BeastPower}/250");
+                Add("獣心技連携", false, $"リソース 技力 {gauge.Tp}/250 魔獣技力 {gauge.BeastPower}/250");
             }
         }
 
@@ -1114,8 +1114,8 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         {
             var finalStatus = actionManager->GetActionStatus(ActionType.Action, FinalStrikeActionId, target.GameObjectId);
             var releaseBlocked = BeastmasterFinalStrikeLock.IsBlocked(FinalStrikeActionId, now);
-            Add("最後の一撃", finalEnabled && gauge.SummonMaxHp > 0 && gauge.SummonHpPercent <= finalThreshold && finalStatus == 0 && !releaseBlocked,
-                !finalEnabled ? "現在の獣笛設定が無効"
+            Add("さいごのいちげき", finalEnabled && gauge.SummonMaxHp > 0 && gauge.SummonHpPercent <= finalThreshold && finalStatus == 0 && !releaseBlocked,
+                !finalEnabled ? "現在の呼び笛設定が無効"
                     : gauge.SummonMaxHp == 0 ? "魔獣なし"
                     : gauge.SummonHpPercent > finalThreshold ? $"魔獣HP {gauge.SummonHpPercent:0.#}%/{finalThreshold:0.#}%"
                     : releaseBlocked ? BeastmasterFinalStrikeLock.GetBlockReason(FinalStrikeActionId, now)
@@ -1125,7 +1125,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         if (configuration.PhysicalThirdFormEnabled || configuration.MagicalThirdFormEnabled)
         {
             var thirdReady = gauge.BeastHeartStacks >= 3 && (gauge.HasWhiteStatus || gauge.HasPurpleStatus);
-            Add("万象流転", thirdReady, thirdReady ? "" : $"リソース/バフ不足（獣心 {gauge.BeastHeartStacks} スタック）");
+            Add("万象流転", thirdReady, thirdReady ? "" : $"リソース/バフ不足（ビーストハート {gauge.BeastHeartStacks} スタック）");
         }
 
         if (configuration.AutoReleaseEnabled
@@ -1585,26 +1585,26 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
         if (!TryGetFinalStrikeSettings(gauge.WhistleIndex, out var enabled, out var hpThreshold))
         {
-            ReportAutoOutputDiagnostic("最後の一撃", $"現在の獣笛 {gauge.WhistleIndex} に対応する1/2/3笛設定がありません", "whistle");
+            ReportAutoOutputDiagnostic("さいごのいちげき", $"現在の呼び笛 {gauge.WhistleIndex}号に対応する呼び笛設定がありません", "whistle");
             return false;
         }
 
         if (!enabled)
         {
-            ReportAutoOutputDiagnostic("最後の一撃", $"現在の第{gauge.WhistleIndex}笛の個別設定が無効です", "disabled");
+            ReportAutoOutputDiagnostic("さいごのいちげき", $"現在の{gauge.WhistleIndex}号呼び笛の個別設定が無効です", "disabled");
             return false;
         }
 
         if (gauge.SummonDataId == 0 || gauge.SummonMaxHp == 0)
         {
-            ReportAutoOutputDiagnostic("最後の一撃", "有効な使役魔獣または魔獣HPが認識されていません", "summon");
+            ReportAutoOutputDiagnostic("さいごのいちげき", "有効な使役魔獣または魔獣HPが認識されていません", "summon");
             return false;
         }
 
         if (gauge.SummonHpPercent > hpThreshold)
         {
             ReportAutoOutputDiagnostic(
-                "最後の一撃",
+                "さいごのいちげき",
                 $"魔獣HP {gauge.SummonHpPercent:0.#}% が閾値 {hpThreshold:0.#}% より上です",
                 "hp");
             return false;
@@ -1666,14 +1666,14 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
                         out _);
                 NextActionReason = releaseInRange
                     ? "現在の魔獣が先に「はなつ」を実行するのを待機中"
-                    : "「はなつ」は使用可能ですが使役魔獣が射程外のため、「はなつ」実行完了まで「最後の一撃」を待機します";
+                    : "「はなつ」は使用可能ですが使役魔獣が射程外のため、「はなつ」実行完了まで「さいごのいちげき」を待機します";
                 ReportAutoOutputDiagnostic(NextActionName, NextActionReason, "wait-release");
                 return false;
             }
 
             ReportAutoOutputDiagnostic(
                 NextActionName,
-                $"「はなつ」は使用不可のため「最後の一撃」の確認を続行（はなつ ActionId {releaseActionId}、コード {actionManager->GetActionStatus(ActionType.Action, releaseActionId, targetId)}）",
+                $"「はなつ」は使用不可のため「さいごのいちげき」の確認を続行（はなつ ActionId {releaseActionId}、コード {actionManager->GetActionStatus(ActionType.Action, releaseActionId, targetId)}）",
                 "release-complete");
         }
 
@@ -1682,14 +1682,14 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         {
             NextActionReason = $"スキル現在使用不可（コード {actionStatus}）";
             ReportAutoOutputDiagnostic(NextActionName,
-                $"スキルステータスコード {actionStatus}；技力 {gauge.Tp}/250、獣力 {gauge.BeastPower}/250",
+                $"スキルステータスコード {actionStatus}；技力 {gauge.Tp}/250、魔獣技力 {gauge.BeastPower}/250",
                 $"status-{actionStatus}");
             nextFinalStrikeAttemptUtc = now.AddMilliseconds(250);
             return false;
         }
 
-        StatusText = "自動「最後の一撃」実行中...";
-        NextActionReason = $"第{gauge.WhistleIndex}笛 魔獣HP {gauge.SummonHpPercent:0.#}% が閾値 {hpThreshold:0.#}% 以下に到達";
+        StatusText = "自動「さいごのいちげき」実行中...";
+        NextActionReason = $"{gauge.WhistleIndex}号呼び笛 魔獣HP {gauge.SummonHpPercent:0.#}% が閾値 {hpThreshold:0.#}% 以下に到達";
         if (!actionManager->UseAction(ActionType.Action, FinalStrikeActionId, targetId))
         {
             ReportAutoOutputDiagnostic(NextActionName, "UseActionがfalseを返しました", "use-action-false");
@@ -1807,7 +1807,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         {
             StatusText = "魔獣召喚待ち...";
             NextActionName = GetActionName(pendingWhistleActionId);
-            NextActionReason = "獣笛使用要求送信済み、召喚確認待ち";
+            NextActionReason = "呼び笛使用要求送信済み、召喚確認待ち";
             return true;
         }
 
@@ -1832,7 +1832,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
             StatusText = "魔獣自動召喚中...";
             NextActionName = GetActionName(actionId);
-            NextActionReason = "魔獣未召喚のため、一号→二号→三号の順に使用可能な呼笛を選択";
+            NextActionReason = "魔獣未召喚のため、一号→二号→三号の順に使用可能な呼び笛を選択";
             if (!actionManager->UseAction(ActionType.Action, actionId, 0))
             {
                 nextWhistleAttemptUtc = now.AddMilliseconds(250);
@@ -1862,9 +1862,9 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             var cooldownStatus = actionManager->GetActionStatus(ActionType.Action, WhistleOneActionId, 0);
             if (cooldownStatus != 0)
             {
-                WhistleRotationStatus = $"完了、一号呼笛のリキャスト待機中（状態コード {cooldownStatus}）";
+                WhistleRotationStatus = $"完了、一号呼び笛のリキャスト待機中（状態コード {cooldownStatus}）";
                 NextActionName = GetActionName(WhistleOneActionId);
-                NextActionReason = "一号呼笛のリキャスト完了後に再実行可能";
+                NextActionReason = "一号呼び笛のリキャスト完了後に再実行可能";
                 if (configuration.WhistleRotationEnabled)
                 {
                     configuration.WhistleRotationEnabled = false;
@@ -1875,7 +1875,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             }
 
             whistleRotationWaitingForCooldown = false;
-            WhistleRotationStatus = "一号呼笛の準備完了、ローテーション開始可能";
+            WhistleRotationStatus = "一号呼び笛の準備完了、ローテーション開始可能";
         }
 
         if (whistleRotationStage < 0)
@@ -1890,16 +1890,16 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             {
                 WhistleRotationStatus = "非戦闘状態への移行待ち";
                 NextActionName = GetActionName(WhistleOneActionId);
-                NextActionReason = "一号呼笛は非戦闘時のみ開始可能";
+                NextActionReason = "一号呼び笛は非戦闘時のみ開始可能";
                 return true;
             }
 
             var whistleStatus = actionManager->GetActionStatus(ActionType.Action, WhistleOneActionId, 0);
             if (whistleStatus != 0)
             {
-                WhistleRotationStatus = $"一号呼笛の準備待ち（状態コード {whistleStatus}）";
+                WhistleRotationStatus = $"一号呼び笛の準備待ち（状態コード {whistleStatus}）";
                 NextActionName = GetActionName(WhistleOneActionId);
-                NextActionReason = "ローテーション開始には一号呼笛が使用可能である必要があります";
+                NextActionReason = "ローテーション開始には一号呼び笛が使用可能である必要があります";
                 return true;
             }
 
@@ -1929,7 +1929,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         {
             WhistleRotationStatus = "有効ターゲット待機中";
             NextActionName = GetActionName(actionId);
-            NextActionReason = "「はなつ」および「最後の一撃」にはターゲットが必要です";
+            NextActionReason = "「はなつ」および「さいごのいちげき」にはターゲットが必要です";
             return true;
         }
 
@@ -1949,7 +1949,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
         var actionStatus = actionManager->GetActionStatus(ActionType.Action, adjustedActionId, targetId);
         NextActionName = GetActionName(adjustedActionId);
-        NextActionReason = actionStatus == 0 ? "呼笛ローテーション" : $"アクションが現在使用不可（状態コード {actionStatus}）";
+        NextActionReason = actionStatus == 0 ? "呼び笛ローテーション" : $"アクションが現在使用不可（状態コード {actionStatus}）";
         if (actionStatus != 0 || !actionManager->UseAction(ActionType.Action, adjustedActionId, targetId))
         {
             WhistleRotationStatus = $"待機中：{GetActionName(adjustedActionId)}";
@@ -1957,7 +1957,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             return true;
         }
 
-        StatusText = "呼笛ローテーション実行中...";
+        StatusText = "呼び笛ローテーション実行中...";
         if (actionId == BeastmasterReleaseBaseActionId)
         {
             BeastmasterFinalStrikeLock.RecordRelease(now);
@@ -1974,7 +1974,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             configuration.Save();
             whistleRotationStage = -1;
             whistleRotationWaitingForCooldown = true;
-            WhistleRotationStatus = "ローテーション完了、一号呼笛のリキャスト待機中";
+            WhistleRotationStatus = "ローテーション完了、一号呼び笛のリキャスト待機中";
             return true;
         }
 
@@ -2102,7 +2102,7 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             || configuration.AutoFinalStrikeWhistleThreeEnabled;
         if (configuration.AutoWhistleEnabled || anyFinalStrikeEnabled || configuration.AutoReleaseEnabled)
         {
-            return $"自動呼笛:{(configuration.AutoWhistleEnabled ? "有効" : "無効")}, 最後の一撃:{(anyFinalStrikeEnabled ? "有効" : "無効")}, はなつ:{(configuration.AutoReleaseEnabled ? "有効" : "無効")}";
+            return $"自動呼び笛:{(configuration.AutoWhistleEnabled ? "有効" : "無効")}, さいごのいちげき:{(anyFinalStrikeEnabled ? "有効" : "無効")}, はなつ:{(configuration.AutoReleaseEnabled ? "有効" : "無効")}";
         }
 
         return "高度スキルはすべて無効";
