@@ -7,7 +7,9 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
 {
     private const string CommandName = "/beastmaster";
     private const string ChineseCommandName = "/\u9A6F\u517D\u5E08";
+    private const string ChineseAssistantCommandName = "/\u9A6F\u517D\u5E08\u52A9\u624B";
     private const string JapaneseCommandName = "/魔獣使い";
+    private const string JapaneseAssistantCommandName = "/魔獣使い助手";
     private readonly PluginUI ui;
     private readonly BeastmasterNavigationService navigationService;
     private readonly BeastmasterCatalogChatTracker catalogChatTracker;
@@ -65,7 +67,15 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
         {
             HelpMessage = "Beastmasterを開きます。サブコマンド：出力、一時停止、再開、停止、カウントダウン [秒数]、カウントダウン中止。",
         });
+        DalamudApi.Commands.AddHandler(ChineseAssistantCommandName, new CommandInfo(OnCommand)
+        {
+            HelpMessage = "Beastmasterを開きます。サブコマンド：出力、一時停止、再開、停止、カウントダウン [秒数]、カウントダウン中止。",
+        });
         DalamudApi.Commands.AddHandler(JapaneseCommandName, new CommandInfo(OnCommand)
+        {
+            HelpMessage = "Beastmasterを開きます。サブコマンド：出力、一時停止、再開、停止、カウントダウン [秒数]、カウントダウン中止。",
+        });
+        DalamudApi.Commands.AddHandler(JapaneseAssistantCommandName, new CommandInfo(OnCommand)
         {
             HelpMessage = "Beastmasterを開きます。サブコマンド：出力、一時停止、再開、停止、カウントダウン [秒数]、カウントダウン中止。",
         });
@@ -84,7 +94,9 @@ public sealed class BeastmasterPlugin : IDalamudPlugin
         DalamudApi.PluginInterface.UiBuilder.OpenConfigUi -= ui.OpenMainWindow;
         DalamudApi.Commands.RemoveHandler(CommandName);
         DalamudApi.Commands.RemoveHandler(ChineseCommandName);
+        DalamudApi.Commands.RemoveHandler(ChineseAssistantCommandName);
         DalamudApi.Commands.RemoveHandler(JapaneseCommandName);
+        DalamudApi.Commands.RemoveHandler(JapaneseAssistantCommandName);
         catalogChatTracker.Dispose();
         autoCaptureService.Dispose();
         countdownService.Dispose();

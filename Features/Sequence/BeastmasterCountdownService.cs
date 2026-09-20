@@ -64,6 +64,12 @@ public sealed class BeastmasterCountdownService : IDisposable
             return;
         }
 
+        if (customCountdownActive)
+        {
+            DalamudApi.ChatGui.Print($"[魔獣使いアシスト] カスタムカウントダウンはすでに実行中です。残り {customCountdownRemaining:0.#} 秒。");
+            return;
+        }
+
         customCountdownActive = true;
         customCountdownDuration = seconds;
         customCountdownRemaining = seconds;

@@ -46,6 +46,8 @@ public sealed class PluginUI
         (44903, "アッシュクレンズ"),
         (44904, "おうえん"),
         (44905, "きあい"),
+        (46750, "ちょうはつ"),
+        (46751, "ひきつけろ"),
     ];
 
     private readonly BeastmasterConfiguration configuration;
@@ -930,9 +932,17 @@ public sealed class PluginUI
             ImGui.SameLine();
             if (countdown)
             {
-                var time = step.TimeSeconds ?? 0f;
-                ImGui.SetNextItemWidth(110f);
-                if (ImGui.InputFloat("秒数", ref time, 1f, 5f, "T-%.1f")) step.TimeSeconds = time;
+                var time = Math.Abs(step.TimeSeconds ?? 0f);
+                var style = ImGui.GetStyle();
+                var timeInputWidth = Math.Max(
+                    130f,
+                    ImGui.CalcTextSize("T-60.0").X + style.FramePadding.X * 2f);
+                ImGui.SetNextItemWidth(timeInputWidth);
+                if (ImGui.InputFloat("時間", ref time, 0f, 0f, "T-%.1f"))
+                {
+                    step.TimeSeconds = -Math.Clamp(Math.Abs(time), 0f, 60f);
+                    configuration.Save();
+                }
                 ImGui.SameLine();
             }
             var actionIndex = Array.FindIndex(SequenceActions, action => action.ActionId == step.ActionId);
@@ -1300,7 +1310,7 @@ public sealed class PluginUI
     {
         var type = (int)condition.Type;
         ImGui.SetNextItemWidth(190f);
-        if (ImGui.Combo($"判定種別##condition-{index}", ref type, "自身バフ\0ターゲットバフ\0DataIDバフ\0DataID詠唱\0ターゲット詠唱\0ターゲットDataID\0自身HP\0ターゲットHP\0ターゲットがBOSS（IsBoss）\0"))
+        if (ImGui.Combo($"判定種別##condition-{index}", ref type, "自身バフ\0ターゲットバフ\0DataIDバフ\0DataID詠唱\0ターゲット詠唱\0ターゲットDataID\0自身HP\0ターゲットHP\0ターゲットがBOSS（IsBoss）\0現在の呼び笛\0"))
         {
             condition.Type = (BeastmasterRuleConditionType)type;
             rule.SyncLegacyFieldsFromFirstCondition();
@@ -1351,6 +1361,17 @@ public sealed class PluginUI
                 configuration.Save();
             }
         }
+        else if (condition.Type == BeastmasterRuleConditionType.CurrentWhistle)
+        {
+            var whistleIndex = Math.Clamp((int)condition.WhistleIndex, 1, 3) - 1;
+            ImGui.SetNextItemWidth(190f);
+            if (ImGui.Combo($"呼び笛##condition-{index}", ref whistleIndex, "一号呼び笛\0二号呼び笛\0三号呼び笛\0"))
+            {
+                condition.WhistleIndex = (byte)(whistleIndex + 1);
+                rule.SyncLegacyFieldsFromFirstCondition();
+                configuration.Save();
+            }
+        }
         else if (condition.Type is not (BeastmasterRuleConditionType.TargetDataId or BeastmasterRuleConditionType.TargetIsBoss))
         {
             var conditionId = (int)Math.Min(condition.ConditionId, int.MaxValue);
@@ -1381,11 +1402,13 @@ public sealed class PluginUI
                 ConditionId = condition.ConditionId,
                 HpCondition = condition.HpCondition,
                 HpThreshold = condition.HpThreshold,
+                WhistleIndex = condition.WhistleIndex,
             }).ToList(),
             DataId = source.DataId,
             ConditionId = source.ConditionId,
             HpCondition = source.HpCondition,
             HpThreshold = source.HpThreshold,
+            WhistleIndex = source.WhistleIndex,
             ActionType = source.ActionType,
             ActionId = source.ActionId,
             CrucibleItemType = source.CrucibleItemType,
@@ -1417,6 +1440,7 @@ public sealed class PluginUI
             BeastmasterRuleConditionType.SelfHp => "自身HP",
             BeastmasterRuleConditionType.TargetHp => "対象HP",
             BeastmasterRuleConditionType.TargetIsBoss => "対象がBOSS",
+            BeastmasterRuleConditionType.CurrentWhistle => $"現在の呼び笛 {condition.WhistleIndex}号",
             _ => "未知",
         };
         if (condition.IsStatusRule)
@@ -1425,6 +1449,8 @@ public sealed class PluginUI
             return actor;
         if (condition.Type == BeastmasterRuleConditionType.TargetIsBoss)
             return "対象最大HP > 自身最大HP × 5";
+        if (condition.Type == BeastmasterRuleConditionType.CurrentWhistle)
+            return $"現在の呼び笛は{condition.WhistleIndex}号";
         if (condition.IsHealthRule)
             return $"{actor} {(condition.HpCondition == BeastmasterRuleHpCondition.Above ? ">" : "<")} {condition.HpThreshold:0.#}%";
         return $"{actor}詠唱 {condition.ConditionId}";
@@ -2269,7 +2295,7 @@ public sealed class PluginUI
         }
 
         DrawGuideFloor("第一盤", null);
-        DrawGuideFloor("第二盤", null);
+        DrawGuideFloor("第二盤", BeastmasterArenaGuide.Round2, BeastmasterArenaGuide.Round2Author);
         DrawGuideFloor("第三盤", BeastmasterArenaGuide.Round3, BeastmasterArenaGuide.Round3Author);
         DrawGuideFloor("特一盤", null);
         DrawGuideFloor("特二盤", null);
@@ -2299,7 +2325,10 @@ public sealed class PluginUI
             ImGui.Spacing();
             foreach (var round in rounds)
             {
-                ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), round.Position);
+                if (!string.IsNullOrWhiteSpace(round.Position))
+                {
+                    ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), round.Position);
+                }
 
                 var bosses = string.Join("、", round.Monsters.Where(monster => monster.IsBoss).Select(monster => monster.Name));
                 if (bosses.Length > 0)
