@@ -32,6 +32,10 @@ public enum BeastmasterCrucibleItemType
     TimeSand,
     StrengthMedicine,
     VampireFang,
+    StarSand,
+    VampireMedicine,
+    RecoverySet,
+    Specific,
 }
 
 public enum BeastmasterRuleStatusCondition
@@ -147,6 +151,14 @@ public sealed class BeastmasterRuleDefinition
         if (ActionType == BeastmasterRuleActionType.Skill && !BeastmasterRuleActions.IsSupported(ActionId))
         {
             error = $"未対応のルールアクションです（{ActionId}）。";
+            return false;
+        }
+
+        if (ActionType == BeastmasterRuleActionType.CrucibleItem
+            && CrucibleItemType == BeastmasterCrucibleItemType.Specific
+            && !BeastmasterRuleActions.IsCrucibleItemId(CrucibleItemId))
+        {
+            error = "有効なクルーシブルアイテムを選択してください。";
             return false;
         }
 
@@ -644,7 +656,10 @@ public static class BeastmasterRuleActions
         => itemId is >= 76 and <= 143;
 
     public static bool IsCrucibleItemFriendly(uint itemId)
-        => itemId is 76 or 77 or 78 or 79 or 80 or 81 or 82 or 104 or 135 or 136 or 137 or 138 or 140;
+        => !RequiresCrucibleItemTarget(itemId);
+
+    public static bool RequiresCrucibleItemTarget(uint itemId)
+        => itemId is 84 or 96 or 128 or 129 or 130 or 131 or 132 or 133 or 134 or 139;
 
     public static string GetCrucibleItemTypeName(BeastmasterCrucibleItemType itemType)
         => itemType switch
@@ -656,7 +671,28 @@ public static class BeastmasterRuleActions
             BeastmasterCrucibleItemType.TimeSand => "時の砂",
             BeastmasterCrucibleItemType.StrengthMedicine => "魔獣の剛力薬",
             BeastmasterCrucibleItemType.VampireFang => "吸血鬼の牙",
+            BeastmasterCrucibleItemType.StarSand => "星の砂",
+            BeastmasterCrucibleItemType.VampireMedicine => "魔獣の吸血薬",
+            BeastmasterCrucibleItemType.RecoverySet => "ビーストポーションキット",
+            BeastmasterCrucibleItemType.Specific => "特定アイテム指定",
             _ => itemType.ToString(),
+        };
+
+    public static string GetCrucibleItemTypeDescription(BeastmasterCrucibleItemType itemType)
+        => itemType switch
+        {
+            BeastmasterCrucibleItemType.Recovery => "回復アイテムの優先度順に使用可能アイテムを選択し、自身のHPを回復します。",
+            BeastmasterCrucibleItemType.Fang => "火、氷、水、雷、土、風の牙および星の砂の優先度順に、現在の敵視対象へ属性攻撃を行います。",
+            BeastmasterCrucibleItemType.DodgeBook => "自身にブリンクの書を使用し、ブリンク効果を獲得します。",
+            BeastmasterCrucibleItemType.ReflectBook => "自身にリフレクの書を使用し、リフレク効果を獲得します。",
+            BeastmasterCrucibleItemType.TimeSand => "自身に時の砂を使用し、砂戻し効果を獲得します。",
+            BeastmasterCrucibleItemType.StrengthMedicine => "自身に魔獣の剛力薬を使用し、攻撃強化効果を獲得します。",
+            BeastmasterCrucibleItemType.VampireFang => "現在の敵視対象に吸血鬼の牙を使用し、ダメージを与えて自身のHPを回復します。",
+            BeastmasterCrucibleItemType.StarSand => "現在の敵視対象に星の砂を使用し、ダメージを与えて火属性耐性低下を付与します。",
+            BeastmasterCrucibleItemType.VampireMedicine => "自身に魔獣の吸血薬を使用し、吸血効果を獲得します。",
+            BeastmasterCrucibleItemType.RecoverySet => "自身にビーストポーションキットを使用し、HP低下時の自動回復効果を獲得します。",
+            BeastmasterCrucibleItemType.Specific => "全カタログからクルーシブルアイテムを1つ選択します。攻撃アイテムは現在の敵視対象、魔獣の金針と呼び戻しの笛は現在のターゲット、その他は自身に使用します。",
+            _ => string.Empty,
         };
 
     public static string GetCrucibleItemName(uint itemId)
@@ -669,7 +705,51 @@ public static class BeastmasterRuleActions
             80 => "ビーストパウダーG1",
             81 => "ビーストパウダーG2",
             82 => "ビーストパウダーG3",
+            83 => "魔獣の毒消し",
+            84 => "魔獣の金針",
+            85 => "魔獣の目薬",
+            86 => "魔獣の抗毒薬G1",
+            87 => "魔獣の抗毒薬G2",
+            88 => "魔獣の抗麻痺薬G1",
+            89 => "魔獣の抗麻痺薬G2",
+            90 => "魔獣の抗暗闇薬G1",
+            91 => "魔獣の抗暗闇薬G2",
+            92 => "魔獣の抗石化薬G1",
+            93 => "魔獣の抗石化薬G2",
+            94 => "魔獣の抗睡眠薬G1",
+            95 => "魔獣の抗睡眠薬G2",
+            96 => "呼び戻しの笛",
+            97 => "魔獣の煙玉",
+            98 => "ビーストリレイザーG1",
+            99 => "ビーストリレイザーG2",
+            100 => "盗賊の目",
+            101 => "商人の目",
+            102 => "魔獣の硬皮薬",
+            103 => "魔獣の短縮薬",
             104 => "魔獣の剛力薬",
+            105 => "魔獣の剛力劇薬",
+            106 => "魔獣の魔力薬",
+            107 => "魔獣の魔力劇薬",
+            108 => "魔獣の特攻薬",
+            109 => "魔獣の特攻劇薬",
+            110 => "魔獣の敏捷薬",
+            111 => "魔獣の敏捷劇薬",
+            112 => "魔獣の体力薬",
+            113 => "魔獣の体力劇薬",
+            114 => "魔獣の俊足薬",
+            115 => "魔獣の羽根",
+            116 => "魔獣の耐火薬G1",
+            117 => "魔獣の耐火薬G2",
+            118 => "魔獣の耐水薬G1",
+            119 => "魔獣の耐水薬G2",
+            120 => "魔獣の耐地薬G1",
+            121 => "魔獣の耐地薬G2",
+            122 => "魔獣の耐雷薬G1",
+            123 => "魔獣の耐雷薬G2",
+            124 => "魔獣の耐風薬G1",
+            125 => "魔獣の耐風薬G2",
+            126 => "魔獣の耐氷薬G1",
+            127 => "魔獣の耐氷薬G2",
             128 => "火の牙",
             129 => "氷の牙",
             130 => "水の牙",
@@ -683,13 +763,71 @@ public static class BeastmasterRuleActions
             138 => "時の砂",
             139 => "星の砂",
             140 => "ビーストポーションキット",
+            141 => "ビーストレメディキット",
+            142 => "スペルフォージの書",
+            143 => "スチールスティングの書",
             _ => $"クルーシブルアイテム {itemId}",
+        };
+
+    public static string GetCrucibleItemDescription(uint itemId)
+        => itemId switch
+        {
+            76 => "自身のHPを10%回復します。",
+            77 => "自身のHPを23%回復します。",
+            78 => "自身のHPを36%回復します。",
+            79 => "自身のHPを50%回復します。",
+            80 => "自身および周囲のパーティメンバーのHPを10%回復します。",
+            81 => "自身および周囲のパーティメンバーのHPを25%回復します。",
+            82 => "自身および周囲のパーティメンバーのHPを40%回復します。",
+            83 => "毒を解除し、解除成功時に最大HPの25%を回復します。",
+            84 => "現在の魔獣対象の石化を解除し、最大HPの50%を回復してストンスキンを付与します。",
+            85 => "暗闇を解除し、解除成功時に最大HPの25%を回復します。",
+            86 or 87 => "毒耐性を高めます。G2は自身および周囲のパーティメンバーに効果があります。",
+            88 or 89 => "麻痺耐性を高めます。G2は自身および周囲のパーティメンバーに効果があります。",
+            90 or 91 => "暗闇耐性を高めます。G2は自身および周囲のパーティメンバーに効果があります。",
+            92 or 93 => "石化耐性を高めます。G2は自身および周囲のパーティメンバーに効果があります。",
+            94 or 95 => "睡眠耐性を高めます。G2は自身および周囲のパーティメンバーに効果があります。",
+            96 => "現在のターゲットで戦闘不能状態の魔獣を蘇生します。",
+            97 => "戦闘開始前に戦闘を回避します。強敵やボスには無効です。",
+            98 => "リレイズを付与し、戦闘不能時に70%の確率で自動蘇生します。",
+            99 => "リレイズを付与し、戦闘不能時に95%の確率で自動蘇生します。",
+            100 => "盗賊の目を付与し、次の戦闘での戦利品ドロップ率を3倍にします。",
+            101 => "商人の目を付与し、次の戦闘でのビーストコイン獲得量を2倍にします。",
+            102 => "魔獣の硬皮薬を付与し、被ダメージを20%軽減します。",
+            103 => "魔獣の短縮薬を付与し、ウェポンスキルの詠唱・リキャスト時間、魔法の詠唱・リキャスト時間、オートアタック周期を15%短縮します。",
+            104 => "魔獣の剛力薬を付与し、物理与ダメージを30%上昇させます。",
+            105 => "自身にスタンを付与する代わりに、物理与ダメージを45%上昇させます。",
+            106 => "魔獣の魔力薬を付与し、魔法与ダメージを30%上昇させます。",
+            107 => "自身に悪夢を付与する代わりに、魔法与ダメージを50%上昇させます。",
+            108 => "魔獣の特攻薬を付与し、クリティカル発動率を30%上昇させます。",
+            109 => "自身に石化を付与する代わりに、クリティカル発動率を50%上昇させます。",
+            110 => "魔獣の敏捷薬を付与し、回避率を25%上昇させます。",
+            111 => "自身に暗闇を付与する代わりに、回避率を25%上昇させます。",
+            112 => "HPを10%回復し、最大HPを20%上昇させます。",
+            113 => "自身に猛毒を付与する代わりに、HPを10%回復し最大HPを30%上昇させます。",
+            114 => "移動速度、回避率、毒耐性を上昇させます。",
+            115 => "TPを100増加させます。高揚の指輪所持時は250増加します。",
+            >= 116 and <= 127 => "対応する属性ダメージの無効化および吸収確率を上昇させます。G2は効果が高くなります。",
+            >= 128 and <= 133 => "現在の敵視対象およびその周囲の敵に対応する属性の範囲魔法ダメージを与えます。",
+            134 => "現在の敵視対象およびその周囲の敵に貫通物理ダメージを与え、最大HPに応じて威力が上昇し一部をHPとして吸収します。",
+            135 => "吸血効果を付与し、与えたダメージの10%分のHPを回復します。",
+            136 => "リフレクを付与し、特定の攻撃を除く魔法攻撃を反射します。",
+            137 => "ブリンクを5スタック付与し、物理攻撃を無効化します。",
+            138 => "砂戻しを付与し、戦闘不能時に戦闘開始時の状態に戻ります。",
+            139 => "現在の敵視対象およびその周囲の敵にスターストームを放ち、火属性耐性を低下させます。",
+            140 => "HPが50%を下回ったときに自動でHPを40%回復します。",
+            141 => "オートレメディを付与し、次に受ける弱体効果を自動で解除します。",
+            142 => "スペルフォージを付与し、自身と魔獣のすべての攻撃を魔法属性にします。",
+            143 => "スチールスティングを付与し、自身と魔獣のすべての攻撃を物理属性にします。",
+            _ => string.Empty,
         };
 
     public static readonly uint[] KnownCrucibleItemIds =
     [
-        76, 77, 78, 79, 80, 81, 82, 104,
-        128, 129, 130, 131, 132, 133, 134,
-        135, 136, 137, 138, 139, 140,
+        76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91,
+        92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107,
+        108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123,
+        124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139,
+        140, 141, 142, 143,
     ];
 }

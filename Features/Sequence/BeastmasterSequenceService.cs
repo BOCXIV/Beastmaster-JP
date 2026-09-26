@@ -275,7 +275,8 @@ public sealed class BeastmasterSequenceService
 
         if (pendingBorrowedAction != 0)
         {
-            if (actionManager->GetAdjustedActionId(BeastSkillActionId) == pendingBorrowedAction)
+            var adjustedBeastSkill = BeastmasterActionHelper.ResolveBeastSkillAction(actionManager);
+            if (adjustedBeastSkill == pendingBorrowedAction)
             {
                 var actionName = GetActionName(pendingBorrowedAction);
                 pendingBorrowedAction = 0;
@@ -330,9 +331,11 @@ public sealed class BeastmasterSequenceService
         }
 
         var baseActionId = step.ActionId;
-        var adjustedActionId = baseActionId is BorrowActionId or BeastSkillActionId
-            ? actionManager->GetAdjustedActionId(baseActionId)
-            : baseActionId;
+        var adjustedActionId = BeastmasterActionHelper.IsBeastSkillAction(baseActionId)
+            ? BeastmasterActionHelper.ResolveBeastSkillAction(actionManager)
+            : baseActionId == BorrowActionId
+                ? actionManager->GetAdjustedActionId(baseActionId)
+                : baseActionId;
         if (adjustedActionId != 0
             && BeastmasterActionHelper.TryGetActionLevel(adjustedActionId, out var requiredLevel)
             && DalamudApi.ObjectTable.LocalPlayer is { } player
@@ -353,7 +356,10 @@ public sealed class BeastmasterSequenceService
             return true;
         }
 
-        var requiresTarget = IsTargetAction(baseActionId);
+        var requiresTarget = IsTargetAction(baseActionId)
+            || (BeastmasterActionHelper.IsBeastSkillAction(baseActionId)
+                && IsValidTarget(target)
+                && ActionManager.CanUseActionOnTarget(adjustedActionId, (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)target!.Address));
         if (requiresTarget && !IsValidTarget(target))
         {
             Abort("シーケンス中止：T-0に有効な敵対ターゲットが存在しません");
@@ -478,10 +484,15 @@ public sealed class BeastmasterSequenceService
             return true;
         }
 
-        var adjustedActionId = baseActionId is ReleaseActionId or BeastSkillActionId or BorrowActionId
-            ? actionManager->GetAdjustedActionId(baseActionId)
-            : baseActionId;
-        var requiresTarget = IsTargetAction(baseActionId);
+        var adjustedActionId = BeastmasterActionHelper.IsBeastSkillAction(baseActionId)
+            ? BeastmasterActionHelper.ResolveBeastSkillAction(actionManager)
+            : baseActionId is ReleaseActionId or BorrowActionId
+                ? actionManager->GetAdjustedActionId(baseActionId)
+                : baseActionId;
+        var requiresTarget = IsTargetAction(baseActionId)
+            || (BeastmasterActionHelper.IsBeastSkillAction(baseActionId)
+                && IsValidTarget(target)
+                && ActionManager.CanUseActionOnTarget(adjustedActionId, (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)target!.Address));
         if (requiresTarget && !IsValidTarget(target))
         {
             Abort($"シーケンス中止：「{GetActionName(adjustedActionId)}」の対象ターゲットが存在しません");

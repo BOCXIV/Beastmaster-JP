@@ -10,9 +10,45 @@ public sealed record BeastmasterArenaGuideRound(
 
 public static class BeastmasterArenaGuide
 {
+    public const string Round1Author = "其他母肥角色@拂暁之間";
     public const string Round2Author = "其他母肥角色@拂暁之間";
     public const string Round3Author = "其他母肥角色@拂暁之間";
+    public const string HighRound1Author = "其他母肥角色@拂暁之間";
     public const string HighRound2Author = "其他母肥角色@拂暁之間";
+
+    public static IReadOnlyList<BeastmasterArenaGuideRound> Round1 { get; } =
+    [
+        new(
+            string.Empty,
+            [new("ビショップ・ピース", true), new("キャバリアー・ピース", true)],
+            "先にビショップから倒す。キャバリアーが盾を構えたら魔獣で敵視を取り背後から攻撃する。",
+            "盾を構えたキャバリアーを攻撃し続けると一定時間で自ら盾を下ろすため、16分待つ必要はない。"),
+        new(
+            string.Empty,
+            [new("グレーターデーモン・ピース", true)],
+            "「アビスピアス」で発生する円形予兆範囲に注意。巻き込まれやすい。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("ソウルフレア・ピース", true)],
+            "予兆範囲攻撃が多いため自身のHPに注意。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("カラミティ・スコルピオン・ピース", true), new("スコルピオン・ピース", false)],
+            "「デスストーカー」による毒は解除可能だが、「ポイズンウェブ」による毒は解除不可。HPに注意し、小型のスコルピオンが出現したら迅速に撃破する。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("オーガ・ピース", true), new("妖火", false), new("大妖火", false)],
+            "最初の「フレイムスマッシュ」は敵前方の扇状範囲。2回目は反対側の火輪へ瞬間移動して扇状範囲を放つため早めに移動する。ボスが「火精の加護」を詠唱したら外周で火精を待ち、出現後即座に撃破する。床の火輪は踏まないこと。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("サキュバス パドソ", true), new("ナイトメア・マジシャン・ピース", false), new("ナイトメア・キャバリアー・ピース", false)],
+            "ボスが「ブラッディキッス」を詠唱したら視線（面向）に注意。増援が出現したら迅速に倒す。光輪は4スタック溜まると即死するため、スタック数が増えたら少し待ってから踏む。",
+            string.Empty),
+    ];
 
     public static IReadOnlyList<BeastmasterArenaGuideRound> Round2 { get; } =
     [
@@ -95,6 +131,60 @@ public static class BeastmasterArenaGuide
             [new("貪食のガトラー", true), new("タナトス・ピース", true)],
             "ギミック多数。魔獣の位置取りに注意し、通常オートアタックに巻き込まれないようにしてください。",
             "魔獣のHPが削れてるよ……"),
+    ];
+
+    public static IReadOnlyList<BeastmasterArenaGuideRound> HighRound1 { get; } =
+    [
+        new(
+            string.Empty,
+            [new("ビブリオタフ・ピース", true)],
+            "扇状範囲予兆を回避。「メテオ」の対象になったら外周へ捨て、重ねないようにする。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("モルボル・ピース", true), new("モルボル・シードリング・ピース", false), new("モルボル・グレート・ピース", false)],
+            "「くさい息」は詠唱が早いため回避に注意。シードリングが出現したら最優先で撃破する。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("ラフレシア・ピース", true), new("クイーン・ホーネット・ピース", false)],
+            "吸引と捕食を回避。クイーン・ホーネットが出現したら死の宣告を防ぐため迅速に撃破する。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("アイスドラゴン・ピース", true), new("アイス・スプライト", false)],
+            "氷の円形予兆は重ねない。広範囲の氷嵐からは離れる。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("ガーゴイル・ピース", true)],
+            "毒サークルや突進を回避。全体攻撃に注意。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("ディレクター・ピース", true), new("バグ・ピース", false), new("クロックワーク・ソルジャー・ピース", false), new("パニック・アーマー・ピース", false), new("ドローン・ピース", false), new("コブラ・ピース", false)],
+            "ボスのHPは低めのため集中攻撃で倒しきる。",
+            "出現確率はかなり低めの模様。"),
+        new(
+            string.Empty,
+            [new("コロッサス・ピース", true)],
+            "ボスが「岩壁」を詠唱したらトゲの方向に注意し、岩に当たらないようにする。1体目のコロッサス撃破後、2体目が起動する。「岩雨」で4つの岩が出現し、破壊された岩の跡地が月環安全地帯になる。「自爆」は即死ではなく、自爆完了と同時にボスが撃破される。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("トレント・ピース", true), new("スラグ・ピース", false), new("マンドラ・ピース", false), new("サソリ・ピース", false), new("ビルロク・ピース", false)],
+            "増援が出現したら迅速に各個撃破する。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("マザーボム・ピース", true), new("グレネード・ピース", false), new("ボム・ピース", false), new("スノーボム・ピース", false), new("パイナップル・ピース", false)],
+            "ランダム増援は全体的に難易度が低いため、ボスを集中攻撃して倒しきる。",
+            string.Empty),
+        new(
+            string.Empty,
+            [new("怨毒龍 ボルゴニ", true), new("有毒物質", false)],
+            "ボスが「猛毒吐息」詠唱時に後方ジャンプして外周へ移動し扇状毒ブレスを放つ。実際の安置はターゲットサークル内（足元円形）となるため、ボスの向きに注意。「猛毒粘液」の毒沼は外周沿いに捨てる。ボスが「蠕動する痰」を詠唱したら毒沼から離れた位置に誘導し、対象が毒沼に入る前に撃破する。",
+            string.Empty),
     ];
 
     public static IReadOnlyList<BeastmasterArenaGuideRound> HighRound2 { get; } =

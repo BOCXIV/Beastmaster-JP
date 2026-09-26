@@ -8,6 +8,13 @@ namespace Beastmaster;
 public static class BeastmasterActionHelper
 {
     private const float BasicComboRange = 6f;
+    public const uint BeastSkillBaseActionId = 44886;
+
+    public static bool IsBeastSkillAction(uint actionId)
+        => actionId is >= 44896 and <= 44903;
+
+    public static unsafe uint ResolveBeastSkillAction(ActionManager* actionManager)
+        => actionManager == null ? 0u : actionManager->GetAdjustedActionId(BeastSkillBaseActionId);
 
     public static bool IsPlayerInActionRange(
         IBattleChara player,
@@ -16,7 +23,7 @@ public static class BeastmasterActionHelper
         out float distance,
         out float actionRange)
     {
-        distance = Math.Max(0f, Vector3.Distance(player.Position, target.Position) - target.HitboxRadius);
+        distance = GetHorizontalTargetDistance(player, target, out _);
         actionRange = 0f;
         if (!DalamudApi.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Action>().TryGetRow(actionId, out var action))
         {
@@ -64,8 +71,24 @@ public static class BeastmasterActionHelper
             return false;
         }
 
-        distance = Math.Max(0f, Vector3.Distance(summonChara.Position, target.Position) - target.HitboxRadius);
+        distance = GetHorizontalTargetDistance(summonChara, target, out _);
         return actionRange <= 0f || distance <= actionRange;
+    }
+
+    public static float GetHorizontalTargetDistance(
+        IGameObject source,
+        IGameObject target,
+        out float centerDistance)
+    {
+        centerDistance = HorizontalDistance(source.Position, target.Position);
+        return Math.Max(0f, centerDistance - target.HitboxRadius);
+    }
+
+    private static float HorizontalDistance(Vector3 source, Vector3 target)
+    {
+        var x = source.X - target.X;
+        var z = source.Z - target.Z;
+        return MathF.Sqrt(x * x + z * z);
     }
 
     public static bool TryGetActionLevel(uint actionId, out uint level)

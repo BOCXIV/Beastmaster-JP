@@ -340,12 +340,41 @@ public sealed unsafe class BeastmasterCrucibleItemService
             return false;
         }
 
+        if (itemType == BeastmasterCrucibleItemType.StarSand)
+        {
+            if (now < nextFangUseUtc)
+            {
+                LastFailureReason = "各種の牙の再使用待機中";
+                return false;
+            }
+
+            if (target != null && TryUseCrucibleItemOnTarget(139, target, now, ruleSource))
+            {
+                itemId = 139;
+                return true;
+            }
+
+            if (target == null)
+            {
+                LastFailureReason = "星の砂には有効な敵対ターゲットが必要です";
+            }
+            return false;
+        }
+
+        if (itemType == BeastmasterCrucibleItemType.Specific)
+        {
+            LastFailureReason = "特定アイテム指定モードにはアイテムIDの指定が必要です";
+            return false;
+        }
+
         var selfItemId = itemType switch
         {
             BeastmasterCrucibleItemType.DodgeBook => (ushort)137,
             BeastmasterCrucibleItemType.ReflectBook => (ushort)136,
             BeastmasterCrucibleItemType.TimeSand => (ushort)138,
             BeastmasterCrucibleItemType.StrengthMedicine => (ushort)104,
+            BeastmasterCrucibleItemType.VampireMedicine => (ushort)135,
+            BeastmasterCrucibleItemType.RecoverySet => (ushort)140,
             _ => (ushort)0,
         };
         if (selfItemId != 0)
@@ -388,6 +417,40 @@ public sealed unsafe class BeastmasterCrucibleItemService
             ? "牙のIDが設定されていません"
             : "各種の牙がすべて利用不可（" + string.Join("；", fangFailures) + "）";
         return false;
+    }
+
+    public bool TryUseSpecificCrucibleItem(
+        ushort itemId,
+        IBattleChara player,
+        IBattleChara? target,
+        DateTime now,
+        out ushort usedItemId,
+        RuleRequestSource? ruleSource = null)
+    {
+        usedItemId = 0;
+        if (!BeastmasterRuleActions.IsCrucibleItemId(itemId))
+        {
+            LastFailureReason = $"未知のクルーシブルアイテムID {itemId}";
+            return false;
+        }
+
+        if (BeastmasterRuleActions.RequiresCrucibleItemTarget(itemId))
+        {
+            if (target == null || target.IsDead || target.CurrentHp == 0)
+            {
+                LastFailureReason = "このクルーシブルアイテムには有効なターゲットが必要です";
+                return false;
+            }
+
+            if (!TryUseCrucibleItemOnTarget(itemId, target, now, ruleSource)) return false;
+        }
+        else if (!TryUseCrucibleItemOnTarget(itemId, player, now, ruleSource))
+        {
+            return false;
+        }
+
+        usedItemId = itemId;
+        return true;
     }
 
     public unsafe bool TryUseCrucibleItemOnTarget(

@@ -111,25 +111,40 @@ public sealed class BeastmasterRuleService
             return TryExecuteCrucibleItem(ruleSet, rule, ruleIndex, target, matchReason, now);
         }
 
-        var targetId = BeastmasterRuleActions.RequiresTarget(rule.ActionId)
+        var requestedActionId = rule.ActionId;
+        var resolvedBeastSkillId = BeastmasterActionHelper.IsBeastSkillAction(requestedActionId)
+            ? BeastmasterActionHelper.ResolveBeastSkillAction(actionManager)
+            : 0u;
+        if (BeastmasterActionHelper.IsBeastSkillAction(requestedActionId)
+            && !BeastmasterActionHelper.IsBeastSkillAction(resolvedBeastSkillId))
+        {
+            Fail(ruleSet, rule, ruleIndex, matchReason, "魔獣技に有効な「かりる」アクションがありません（44886 が 44896～44903 に置き換わっていません）", now);
+            return false;
+        }
+
+        var actionId = resolvedBeastSkillId != 0 ? resolvedBeastSkillId : requestedActionId;
+        var targetId = BeastmasterRuleActions.RequiresTarget(requestedActionId)
+            || (target != null
+                && BeastmasterActionHelper.IsBeastSkillAction(requestedActionId)
+                && ActionManager.CanUseActionOnTarget(actionId, (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)target.Address))
             ? target?.GameObjectId ?? 0UL
             : 0UL;
-        if (BeastmasterRuleActions.RequiresTarget(rule.ActionId) && targetId == 0)
+        if (BeastmasterRuleActions.RequiresTarget(requestedActionId) && targetId == 0)
         {
             Fail(ruleSet, rule, ruleIndex, matchReason, "選択したアクションには有効なターゲットが必要です", now);
             return false;
         }
 
-        if (BeastmasterFinalStrikeLock.IsBlocked(rule.ActionId, now))
+        if (BeastmasterFinalStrikeLock.IsBlocked(actionId, now))
         {
-            Fail(ruleSet, rule, ruleIndex, matchReason, BeastmasterFinalStrikeLock.GetBlockReason(rule.ActionId, now), now);
+            Fail(ruleSet, rule, ruleIndex, matchReason, BeastmasterFinalStrikeLock.GetBlockReason(actionId, now), now);
             return false;
         }
 
         var availability = BeastmasterActionHelper.GetAvailability(
-            rule.ActionId,
+            actionId,
             targetId,
-            BeastmasterRuleActions.UsesAdjustedActionId(rule.ActionId));
+            BeastmasterRuleActions.UsesAdjustedActionId(requestedActionId));
         if (!availability.CanUse)
         {
             Fail(ruleSet, rule, ruleIndex, matchReason, availability.Reason, now);
@@ -186,7 +201,10 @@ public sealed class BeastmasterRuleService
         DateTime now)
     {
         var requiresTarget = rule.CrucibleItemType is BeastmasterCrucibleItemType.Fang
-            or BeastmasterCrucibleItemType.VampireFang;
+            or BeastmasterCrucibleItemType.VampireFang
+            or BeastmasterCrucibleItemType.StarSand
+            || rule.CrucibleItemType == BeastmasterCrucibleItemType.Specific
+                && BeastmasterRuleActions.RequiresCrucibleItemTarget(rule.CrucibleItemId);
         if (requiresTarget && target == null)
         {
             Fail(ruleSet, rule, ruleIndex, matchReason, "クルーシブルアイテムには有効なターゲットが必要です", now);
@@ -195,8 +213,11 @@ public sealed class BeastmasterRuleService
 
         var player = DalamudApi.ObjectTable.LocalPlayer as IBattleChara;
         var requestSource = new BeastmasterCrucibleItemService.RuleRequestSource(ruleSet.Name, rule.Name, ruleIndex);
-        if (player == null || !crucibleItemService.TryUseCrucibleItemOnTarget(
-                rule.CrucibleItemType, player, target, now, out var itemId, requestSource))
+        ushort itemId = 0;
+        var success = player != null && (rule.CrucibleItemType == BeastmasterCrucibleItemType.Specific
+            ? crucibleItemService.TryUseSpecificCrucibleItem((ushort)rule.CrucibleItemId, player, target, now, out itemId, requestSource)
+            : crucibleItemService.TryUseCrucibleItemOnTarget(rule.CrucibleItemType, player, target, now, out itemId, requestSource));
+        if (!success)
         {
             Fail(ruleSet, rule, ruleIndex, matchReason, crucibleItemService.LastFailureReason, now);
             return false;

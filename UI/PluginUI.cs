@@ -487,7 +487,7 @@ public sealed class PluginUI
     {
         ImGui.Text("現在のターゲット");
         var target = DalamudApi.TargetManager.Target;
-        if (target is not Dalamud.Game.ClientState.Objects.Types.IBattleChara)
+        if (target is not Dalamud.Game.ClientState.Objects.Types.IBattleChara battleTarget)
         {
             ImGui.SameLine();
             ImGui.TextDisabled("ターゲットなし");
@@ -498,6 +498,11 @@ public sealed class PluginUI
         ImGui.Text(target.Name.TextValue);
         ImGui.SameLine();
         ImGui.TextDisabled($"{autoCaptureService.TargetHpPercent:0.#}% · {autoCaptureService.TargetStatus}");
+        if (DalamudApi.ObjectTable.LocalPlayer is { } player)
+        {
+            var distance = BeastmasterActionHelper.GetHorizontalTargetDistance(player, battleTarget, out var centerDistance);
+            ImGui.TextDisabled($"距離：{distance:0.##} ヤルム（水平中心 {centerDistance:0.##}）");
+        }
         if (configuration.ShowGaugeInOverlay)
         {
             ImGui.TextDisabled($"とらえる：{autoCaptureService.CaptureState}");
@@ -1282,10 +1287,60 @@ public sealed class PluginUI
         {
             var itemType = (int)rule.CrucibleItemType;
             ImGui.SetNextItemWidth(190f);
-            if (ImGui.Combo("クルーシブルアイテム", ref itemType, "回復アイテム\0各種の牙\0ブリンクの書\0リフレクの書\0時の砂\0魔獣の剛力薬\0吸血鬼の牙\0"))
+            var selectedItemType = Enum.IsDefined(typeof(BeastmasterCrucibleItemType), itemType)
+                ? (BeastmasterCrucibleItemType)itemType
+                : BeastmasterCrucibleItemType.Recovery;
+            if (ImGui.BeginCombo("クルーシブルアイテム", BeastmasterRuleActions.GetCrucibleItemTypeName(selectedItemType)))
             {
-                rule.CrucibleItemType = (BeastmasterCrucibleItemType)itemType;
-                configuration.Save();
+                foreach (var option in Enum.GetValues<BeastmasterCrucibleItemType>())
+                {
+                    var isSelected = option == selectedItemType;
+                    if (ImGui.Selectable(BeastmasterRuleActions.GetCrucibleItemTypeName(option), isSelected))
+                    {
+                        rule.CrucibleItemType = option;
+                        configuration.Save();
+                    }
+
+                    if (isSelected) ImGui.SetItemDefaultFocus();
+                    if (ImGui.IsItemHovered())
+                    {
+                        ImGui.SetTooltip(BeastmasterRuleActions.GetCrucibleItemTypeDescription(option));
+                    }
+                }
+
+                ImGui.EndCombo();
+            }
+
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip(BeastmasterRuleActions.GetCrucibleItemTypeDescription(selectedItemType));
+            }
+
+            if (selectedItemType == BeastmasterCrucibleItemType.Specific)
+            {
+                var itemId = (int)rule.CrucibleItemId;
+                var selectedItemId = BeastmasterRuleActions.IsCrucibleItemId(rule.CrucibleItemId)
+                    ? rule.CrucibleItemId
+                    : BeastmasterRuleActions.KnownCrucibleItemIds[0];
+                if (ImGui.BeginCombo("特定アイテム指定", BeastmasterRuleActions.GetCrucibleItemName(selectedItemId)))
+                {
+                    foreach (var optionId in BeastmasterRuleActions.KnownCrucibleItemIds)
+                    {
+                        var isSelected = optionId == selectedItemId;
+                        if (ImGui.Selectable($"{BeastmasterRuleActions.GetCrucibleItemName(optionId)} ({optionId})", isSelected))
+                        {
+                            rule.CrucibleItemId = optionId;
+                            configuration.Save();
+                        }
+
+                        if (isSelected) ImGui.SetItemDefaultFocus();
+                        if (ImGui.IsItemHovered()) ImGui.SetTooltip(BeastmasterRuleActions.GetCrucibleItemDescription(optionId));
+                    }
+
+                    ImGui.EndCombo();
+                }
+
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip(BeastmasterRuleActions.GetCrucibleItemDescription(selectedItemId));
             }
         }
         else
@@ -2330,10 +2385,10 @@ public sealed class PluginUI
             return;
         }
 
-        DrawGuideFloor("第一盤", null);
+        DrawGuideFloor("第一盤", BeastmasterArenaGuide.Round1, BeastmasterArenaGuide.Round1Author);
         DrawGuideFloor("第二盤", BeastmasterArenaGuide.Round2, BeastmasterArenaGuide.Round2Author);
         DrawGuideFloor("第三盤", BeastmasterArenaGuide.Round3, BeastmasterArenaGuide.Round3Author);
-        DrawGuideFloor("特一盤", null);
+        DrawGuideFloor("特一盤", BeastmasterArenaGuide.HighRound1, BeastmasterArenaGuide.HighRound1Author);
         DrawGuideFloor("特二盤", BeastmasterArenaGuide.HighRound2, BeastmasterArenaGuide.HighRound2Author);
 
         ImGui.EndTabBar();

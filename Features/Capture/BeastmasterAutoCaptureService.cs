@@ -441,7 +441,11 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         if (now < nextActionUtc)
         {
             StatusText = "実行可能状態の待機中";
-            NextActionReason = "アクション待機中";
+            if (string.IsNullOrWhiteSpace(NextActionReason)
+                || NextActionReason == "基本コンボ（1→2→3）")
+            {
+                NextActionReason = "アクション待機中";
+            }
             return;
         }
 
@@ -638,12 +642,6 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             ResetAutoWhistle();
         }
 
-        if (configuration.AutoWhistleEnabled
-            && TryUseAutoWhistle(actionManager, gauge, now))
-        {
-            return;
-        }
-
         // 呼び笛ローテーションのエントリを一時的に無効化し、後で復元できるように実装を保持。
         // if ((configuration.WhistleRotationEnabled || whistleRotationWaitingForCooldown || whistleRotationStage >= 0)
         //     && TryRunWhistleRotation(actionManager, target, now))
@@ -653,6 +651,12 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
         if (target is null)
         {
+            if (configuration.AutoWhistleEnabled
+                && TryUseAutoWhistle(actionManager, gauge, now))
+            {
+                return;
+            }
+
             StatusText = "敵ターゲット待機中";
             NextActionName = "-";
             NextActionReason = "有効なBattleNpcターゲットがありません";
@@ -686,6 +690,12 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
         if (!configuration.ActiveAttackEnabled && !DalamudApi.Condition[ConditionFlag.InCombat])
         {
+            if (configuration.AutoWhistleEnabled
+                && TryUseAutoWhistle(actionManager, gauge, now))
+            {
+                return;
+            }
+
             StatusText = "戦闘開始待機中";
             NextActionName = "-";
             NextActionReason = "アクティブ攻撃が無効のため、非戦闘時は攻撃・とらえるを行いません";
@@ -728,27 +738,36 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             return;
         }
 
+        if (TryUseCapture(actionManager, player, target, canCapture, hasOwnCapture, now))
+        {
+            abilitiesUsedInGcdWindow = 0;
+            return;
+        }
+
+        if (configuration.AutoWhistleEnabled
+            && TryUseAutoWhistle(actionManager, gauge, now))
+        {
+            return;
+        }
+
         var basicComboActionId = GetBasicComboActionId(actionManager, player);
         var gcdActive = actionManager->IsRecastTimerActive(ActionType.Action, basicComboActionId);
         var gcdTotal = actionManager->GetRecastTime(ActionType.Action, basicComboActionId);
         var gcdElapsed = actionManager->GetRecastTimeElapsed(ActionType.Action, basicComboActionId);
         var gcdRemaining = gcdActive ? Math.Max(0f, gcdTotal - gcdElapsed) : 0f;
-        var gcdReady = !gcdActive
-            && actionManager->GetActionStatus(ActionType.Action, basicComboActionId, target.GameObjectId) == 0;
+        var gcdReady = !gcdActive;
+        var basicComboAttempted = false;
 
         if (gcdReady)
         {
-            if ((configuration.PhysicalThirdFormEnabled || configuration.MagicalThirdFormEnabled)
-                && TryUseThirdFormAction(actionManager, gauge, target.GameObjectId, now))
+            if (configuration.BasicComboEnabled)
             {
-                abilitiesUsedInGcdWindow = 0;
-                return;
-            }
-
-            if (configuration.BasicComboEnabled && TryUseBasicCombo(actionManager, player, target, now))
-            {
-                abilitiesUsedInGcdWindow = 0;
-                return;
+                basicComboAttempted = true;
+                if (TryUseBasicCombo(actionManager, player, target, now))
+                {
+                    abilitiesUsedInGcdWindow = 0;
+                    return;
+                }
             }
 
             if (!configuration.BasicComboEnabled)
@@ -788,12 +807,6 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
             if (gcdRemaining > CooperationMinimumGcdRemaining
                 && TryUseCooperationFirstStage(actionManager, gauge, player, target, now))
-            {
-                abilitiesUsedInGcdWindow++;
-                return;
-            }
-
-            if (TryUseCapture(actionManager, player, target, canCapture, hasOwnCapture, now))
             {
                 abilitiesUsedInGcdWindow++;
                 return;
@@ -860,6 +873,21 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
                 abilitiesUsedInGcdWindow++;
                 return;
             }
+
+            if (gcdRemaining > 0.7f
+                && (configuration.PhysicalThirdFormEnabled || configuration.MagicalThirdFormEnabled)
+                && TryUseThirdFormAction(actionManager, gauge, target.GameObjectId, now))
+            {
+                abilitiesUsedInGcdWindow++;
+                return;
+            }
+
+            if (configuration.AutoWhistleEnabled
+                && TryUseAutoWhistle(actionManager, gauge, now))
+            {
+                abilitiesUsedInGcdWindow++;
+                return;
+            }
         }
 
         StatusText = abilitiesUsedInGcdWindow >= MaxAbilitiesPerGcdWindow
@@ -871,6 +899,13 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             : !gcdActive && !gcdReady
                 ? "GCDリキャスト完了、ターゲット・射程・アクション状態の待機中"
                 : $"GCDまたはアビリティの準備完了を待機中（GCD残り {gcdRemaining:0.###} 秒）";
+
+        if (basicComboAttempted)
+        {
+            StatusText = "基本コンボの実行条件待機中";
+            NextActionName = "-";
+            return;
+        }
     }
 
     private static bool IsArenaTerritory(uint territoryId)
@@ -1239,15 +1274,19 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
             return false;
         }
 
-        var actionStatus = actionManager->GetActionStatus(ActionType.Action, availability.ActionId, target.GameObjectId);
-        if (actionStatus != 0
-            || !actionManager->UseAction(ActionType.Action, availability.ActionId, target.GameObjectId))
+        var actionStatus = actionManager->GetActionStatus(ActionType.Action, actionId, target.GameObjectId);
+        if (!actionManager->UseAction(ActionType.Action, actionId, target.GameObjectId))
         {
-            ReportAutoOutputDiagnostic(NextActionName, $"スキルステータスコード {actionStatus}", $"status-{actionStatus}");
+            NextActionReason = $"アクション要求失敗（状態コード {actionStatus}、距離 {distance:0.##}/{range:0.##} ヤルム）";
+            ReportAutoOutputDiagnostic(NextActionName, NextActionReason, $"status-{actionStatus}");
+            nextActionUtc = now.AddMilliseconds(250);
             return false;
         }
 
-        ReportAutoOutputSuccess(NextActionName, availability.ActionId);
+        NextActionReason = actionStatus == 0
+            ? "基本コンボ（1→2→3）"
+            : $"不一致のアクション状態コード {actionStatus} をバイパスしました";
+        ReportAutoOutputSuccess(NextActionName, actionId);
         nextActionUtc = now.AddMilliseconds(250);
         return true;
     }
@@ -1454,8 +1493,8 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
 
     private unsafe bool TryUseBeastSkill(ActionManager* actionManager, ulong targetId, DateTime now)
     {
-        var adjustedActionId = actionManager->GetAdjustedActionId(BeastSkillActionId);
-        if (adjustedActionId is < 44896 or > 44903)
+        var adjustedActionId = BeastmasterActionHelper.ResolveBeastSkillAction(actionManager);
+        if (!BeastmasterActionHelper.IsBeastSkillAction(adjustedActionId))
         {
             return false;
         }
@@ -1848,7 +1887,8 @@ public sealed class BeastmasterAutoCaptureService : IDisposable
         BeastmasterGaugeSnapshot gauge,
         DateTime now)
     {
-        var hasSummon = gauge.SummonEntry != null || gauge.WhistleIndex is >= 1 and <= 3;
+        // 呼び笛番号は魔獣死亡後も保持される場合があるため、生存判定には使用しない。
+        var hasSummon = gauge.SummonEntry != null;
         if (hasSummon)
         {
             ResetAutoWhistle();
